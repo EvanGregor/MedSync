@@ -8,7 +8,7 @@
   [![Next.js](https://img.shields.io/badge/Next.js-15-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
   [![Supabase](https://img.shields.io/badge/Supabase-Database-3ECF8E?style=for-the-badge&logo=supabase)](https://supabase.com/)
   [![Gemini](https://img.shields.io/badge/Google_Gemini-AI-4285F4?style=for-the-badge&logo=google-gemini)](https://deepmind.google/technologies/gemini/)
-  [![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+  [![Zoom](https://img.shields.io/badge/Zoom-Video-2D8CFF?style=for-the-badge&logo=zoom)](https://zoom.us/)
 </div>
 
 ---
@@ -30,7 +30,7 @@ From automated **MRI Brain Tumor detection** to **X-ray fracture analysis**, Med
 ### 🔄 Real-time Ecosystem
 - **Instant Messaging**: Secure, end-to-end encrypted chat for Doctors, Patients, and Lab Technicians.
 - **Live Sync Dashboards**: Role-specific interfaces that update in real-time via Supabase WebSockets.
-- **Video Consultations**: Integrated **Agora RTC** and **Zoom SDK** for seamless telehealth appointments.
+- **Video Consultations**: Integrated **Zoom Meeting SDK** for high-quality, secure telehealth appointments.
 
 ### 🛡️ Enterprise-Grade Security
 - **Role-Based Access Control (RBAC)**: Strict permission boundaries for different user types.
@@ -47,7 +47,7 @@ From automated **MRI Brain Tumor detection** to **X-ray fracture analysis**, Med
 | **Styling** | Tailwind CSS, shadcn/ui |
 | **Backend** | Supabase (PostgreSQL, Auth, Real-time, Storage) |
 | **AI/ML** | Google Gemini API, Vertex AI, PyTorch, YOLOv8, Keras |
-| **Video/Comm** | Agora RTC, Zoom Meeting SDK |
+| **Video/Comm** | Zoom Meeting SDK |
 | **ML Serving** | FastAPI, Uvicorn, SlowAPI (Rate Limiting) |
 
 ---
@@ -74,11 +74,18 @@ graph TD
         YT[YOLO + EffNet Ensemble]
     end
 
+    subgraph "Video Engine"
+        ZM[Zoom SDK]
+    end
+
     P <--> RT
     D <--> RT
     L <--> RT
     
     RT <--> SB
+    
+    D -- Video Call --> ZM
+    P -- Video Call --> ZM
     
     D -- Analysis Request --> ML
     L -- Upload Report --> SB
@@ -105,7 +112,7 @@ The MedSync ML Service is a high-performance FastAPI application designed for me
 - Node.js 20+
 - Python 3.10+ (for ML Service)
 - Supabase Project
-- Agora App ID
+- Zoom SDK Key/Secret
 
 ### Installation
 
@@ -129,7 +136,8 @@ The MedSync ML Service is a high-performance FastAPI application designed for me
    NEXT_PUBLIC_SUPABASE_URL=your_url
    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_key
    NEXT_PUBLIC_GEMINI_API_KEY=your_gemini_key
-   NEXT_PUBLIC_AGORA_APP_ID=your_agora_id
+   NEXT_PUBLIC_ZOOM_SDK_KEY=your_zoom_key
+   NEXT_PUBLIC_ZOOM_SDK_SECRET=your_zoom_secret
    ```
 
 4. **Run Development Server:**
@@ -155,7 +163,7 @@ Built with ❤️ in 36 hours for **Parul University AI/ML Hackathon 2.0**.
 
 - **Infra**: Supabase, Vercel
 - **AI**: Google Gemini, Vertex AI
-- **Video**: Agora.io
+- **Video**: Zoom Meeting SDK
 
 ---
 
