@@ -73,7 +73,13 @@ export default function DoctorCommunicationPage() {
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    const container = messagesContainerRef.current
+    if (container) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: "smooth"
+      })
+    }
   }
 
   // Enhanced scroll to bottom with better positioning
@@ -123,7 +129,7 @@ export default function DoctorCommunicationPage() {
       container.addEventListener('scroll', checkScrollPosition)
       // Initial check
       checkScrollPosition()
-      
+
       return () => {
         container.removeEventListener('scroll', checkScrollPosition)
       }
@@ -147,7 +153,7 @@ export default function DoctorCommunicationPage() {
       }
 
       setUser(user)
-      
+
       // Get or create user record
       const { data: userData, error: userError } = await supabase
         .from('users')
@@ -186,7 +192,7 @@ export default function DoctorCommunicationPage() {
           .update({ online: true })
           .eq('id', userData.id)
       }
-      
+
       setLoading(false)
     }
 
@@ -212,7 +218,7 @@ export default function DoctorCommunicationPage() {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
     const patientId = urlParams.get('patient')
-    
+
     if (patientId && patients.length > 0) {
       const patient = patients.find(p => p.id === patientId || p.name?.includes(patientId))
       if (patient) {
@@ -303,7 +309,7 @@ export default function DoctorCommunicationPage() {
         table: 'ml_suggestions'
       }, (payload) => {
         const updatedSuggestion = payload.new as MLSuggestion
-        setMlSuggestions(prev => 
+        setMlSuggestions(prev =>
           prev.map(s => s.id === updatedSuggestion.id ? updatedSuggestion : s)
         )
       })
@@ -334,10 +340,10 @@ export default function DoctorCommunicationPage() {
           { id: '44444444-4444-4444-4444-444444444444', name: 'Lab Tech Alex Chen', role: 'lab', specialty: 'Clinical Laboratory', online: true },
           { id: '55555555-5555-5555-5555-555555555555', name: 'Lab Tech Maria Garcia', role: 'lab', specialty: 'Radiology', online: true }
         ]
-        
+
         setPatients(fallbackPatients)
         setLabTechs(fallbackLabTechs)
-        
+
         if (fallbackPatients.length > 0) {
           setSelectedContact(fallbackPatients[0])
         }
@@ -345,14 +351,14 @@ export default function DoctorCommunicationPage() {
       }
 
       const usersList = usersData || []
-      
+
       setPatients(usersList.filter((u: any) => u.role === 'patient'))
       setLabTechs(usersList.filter((u: any) => u.role === 'lab'))
-      
+
       // Update online users set
       const onlineUserIds = new Set(usersList.filter((u: any) => u.online).map((u: any) => u.id))
       setOnlineUsers(onlineUserIds)
-      
+
       if (usersList.filter((u: any) => u.role === 'patient').length > 0) {
         setSelectedContact(usersList.filter((u: any) => u.role === 'patient')[0])
       }
@@ -427,7 +433,7 @@ export default function DoctorCommunicationPage() {
 
     const messageContent = newMessage.trim()
     setNewMessage("") // Clear input immediately for better UX
-    
+
     // Create local message immediately for real-time display
     const localMessage: Message = {
       id: `local-${Date.now()}`,
@@ -440,10 +446,10 @@ export default function DoctorCommunicationPage() {
       receiver_role: selectedContact.role,
       created_at: new Date().toISOString()
     }
-    
+
     // Add message to local state immediately
     setMessages(prev => [...prev, localMessage])
-    
+
     setSending(true)
     try {
       const { data, error } = await supabase
@@ -463,17 +469,17 @@ export default function DoctorCommunicationPage() {
       if (error) {
         console.error('Error sending message:', error)
         // Keep the local message but mark it as failed
-        setMessages(prev => 
-          prev.map(msg => 
-            msg.id === localMessage.id 
+        setMessages(prev =>
+          prev.map(msg =>
+            msg.id === localMessage.id
               ? { ...msg, id: `failed-${Date.now()}` }
               : msg
           )
         )
       } else if (data) {
         // Replace local message with server message
-        setMessages(prev => 
-          prev.map(msg => 
+        setMessages(prev =>
+          prev.map(msg =>
             msg.id === localMessage.id ? data : msg
           )
         )
@@ -481,9 +487,9 @@ export default function DoctorCommunicationPage() {
     } catch (error) {
       console.error('Error sending message:', error)
       // Keep the local message but mark it as failed
-      setMessages(prev => 
-        prev.map(msg => 
-          msg.id === localMessage.id 
+      setMessages(prev =>
+        prev.map(msg =>
+          msg.id === localMessage.id
             ? { ...msg, id: `failed-${Date.now()}` }
             : msg
         )
@@ -513,9 +519,9 @@ export default function DoctorCommunicationPage() {
   }
 
   const getUnreadCount = (contactId: string) => {
-    return messages.filter(m => 
-      m.sender_id === contactId && 
-      m.receiver_id === currentUserId && 
+    return messages.filter(m =>
+      m.sender_id === contactId &&
+      m.receiver_id === currentUserId &&
       !m.is_read
     ).length
   }
@@ -550,7 +556,7 @@ Findings: ${suggestion.findings}
 Confidence: ${(suggestion.confidence * 100).toFixed(1)}%
 Recommendations: ${suggestion.recommendations}
 Severity: ${suggestion.severity}`
-    
+
     setNewMessage(suggestionText)
     setSelectedSuggestion(null)
   }
@@ -587,7 +593,7 @@ Severity: ${suggestion.severity}`
   }
 
   return (
-    <div className="min-h-screen h-screen bg-transparent p-6 md:p-12 flex flex-col overflow-hidden max-w-[1600px] mx-auto">
+    <div className="min-h-screen lg:h-[100dvh] bg-white flex flex-col overflow-x-hidden lg:overflow-hidden max-w-[1600px] mx-auto shadow-2xl border-x border-black/5">
       <style jsx global>{`
         .scrollbar-thin::-webkit-scrollbar {
           width: 6px;
@@ -605,49 +611,51 @@ Severity: ${suggestion.severity}`
           scrollbar-width: thin;
           scrollbar-color: rgba(0,0,0,0.2) transparent;
         }
-        .contacts-container {
-          max-height: calc(100vh - 250px);
-          overflow-y: auto;
+        .scrollbar-thin {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(0,0,0,0.2) transparent;
         }
       `}</style>
 
-      {/* Header */}
-      <header className="border-b border-black/10 pb-6 mb-6 flex-shrink-0 flex items-end justify-between">
-        <div>
-          <Link href="/doctor-dashboard" className="inline-flex items-center space-x-2 text-xs font-mono uppercase tracking-widest text-black/40 hover:text-black mb-4 transition-colors">
-            <ArrowLeft className="h-3 w-3" />
-            <span>Back to Dashboard</span>
-          </Link>
-          <div className="flex items-center gap-4">
-            <h1 className="text-4xl font-bold tracking-tight uppercase">Communications</h1>
+      <div className="flex-shrink-0 p-4 md:p-6 pb-0">
+        {/* Header */}
+        <header className="border-b border-black/10 pb-4 flex items-end justify-between">
+          <div>
+            <Link href="/doctor-dashboard" className="inline-flex items-center space-x-2 text-xs font-mono uppercase tracking-widest text-black/40 hover:text-black mb-4 transition-colors">
+              <ArrowLeft className="h-3 w-3" />
+              <span>Back to Dashboard</span>
+            </Link>
+            <div className="flex items-center gap-4">
+              <h1 className="text-4xl font-bold tracking-tight uppercase">Communications</h1>
+            </div>
           </div>
-        </div>
-        <div className="text-right hidden md:flex items-center gap-4">
-          <Button
-            onClick={() => setShowSuggestions(!showSuggestions)}
-            variant="outline"
-            className="border-black rounded-none font-mono uppercase text-xs h-10"
-          >
-            {showSuggestions ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
-            {showSuggestions ? 'Hide' : 'Show'} AI
-          </Button>
-          <div className="text-right">
-            <span className="text-[10px] font-mono uppercase tracking-widest text-black/40 block mb-1">
-              Portal Status
-            </span>
-            <span className="text-xl font-mono border-b border-black inline-flex items-center gap-2">
-              <span className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></span>
-              ACTIVE
-            </span>
+          <div className="text-right hidden md:flex items-center gap-4">
+            <Button
+              onClick={() => setShowSuggestions(!showSuggestions)}
+              variant="outline"
+              className="border-black rounded-none font-mono uppercase text-xs h-10"
+            >
+              {showSuggestions ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
+              {showSuggestions ? 'Hide' : 'Show'} AI
+            </Button>
+            <div className="text-right">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-black/40 block mb-1">
+                Portal Status
+              </span>
+              <span className="text-xl font-mono border-b border-black inline-flex items-center gap-2">
+                <span className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></span>
+                ACTIVE
+              </span>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      </div>
 
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <div className={`grid gap-6 flex-1 min-h-0 h-full items-start ${showSuggestions ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
+      <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden p-4 md:p-6 pt-2">
+        <div className={`grid gap-4 md:gap-6 lg:h-full items-stretch ${showSuggestions ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
           {/* Contacts Sidebar */}
-          <div className="lg:col-span-1 h-full">
-            <div className="h-full flex flex-col bg-white border border-black/10">
+          <div className="lg:col-span-1 lg:h-full min-h-0">
+            <div className="lg:h-full flex flex-col bg-white border border-black/10 overflow-hidden">
               <div className="flex-shrink-0 border-b border-black/10 p-6 bg-black/[0.02]">
                 <h2 className="text-lg font-bold uppercase flex items-center">
                   <Users className="h-5 w-5 mr-2" />
@@ -655,10 +663,10 @@ Severity: ${suggestion.severity}`
                 </h2>
                 <p className="text-[10px] font-mono text-black/60 uppercase mt-1">Patients & Labs</p>
               </div>
-              
-              <div className="flex-1 overflow-hidden flex flex-col">
-                <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full h-full flex flex-col">
-                  <TabsList className="grid w-full grid-cols-2 flex-shrink-0 rounded-none bg-black/5 p-1 m-4 w-[calc(100%-2rem)]">
+
+              <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+                <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full h-full flex flex-col overflow-hidden">
+                  <TabsList className="grid w-full grid-cols-2 flex-shrink-0 rounded-none bg-black/5 p-1 px-4 mt-4">
                     <TabsTrigger value="patients" className="rounded-none data-[state=active]:bg-white data-[state=active]:text-black data-[state=active]:shadow-sm font-mono uppercase text-[10px] font-bold">
                       <User className="h-3 w-3 mr-2" />
                       Patients
@@ -669,17 +677,16 @@ Severity: ${suggestion.severity}`
                     </TabsTrigger>
                   </TabsList>
 
-                  <TabsContent value="patients" className="mt-0 flex-1 overflow-y-auto scrollbar-thin contacts-container">
+                  <TabsContent value="patients" className="mt-4 flex-1 overflow-y-auto scrollbar-thin">
                     <div className="flex flex-col">
                       {patients.map((patient) => (
                         <div
                           key={patient.id}
                           onClick={() => setSelectedContact(patient)}
-                          className={`p-4 border-b border-black/5 cursor-pointer transition-colors ${
-                            selectedContact?.id === patient.id
-                              ? 'bg-black text-white'
-                              : 'bg-white hover:bg-black/[0.02]'
-                          }`}
+                          className={`p-4 border-b border-black/5 cursor-pointer transition-colors ${selectedContact?.id === patient.id
+                            ? 'bg-black text-white'
+                            : 'bg-white hover:bg-black/[0.02]'
+                            }`}
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-3">
@@ -711,17 +718,16 @@ Severity: ${suggestion.severity}`
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="labs" className="mt-0 flex-1 overflow-y-auto scrollbar-thin contacts-container">
+                  <TabsContent value="labs" className="mt-4 flex-1 overflow-y-auto scrollbar-thin">
                     <div className="flex flex-col">
                       {labTechs.map((lab) => (
                         <div
                           key={lab.id}
                           onClick={() => setSelectedContact(lab)}
-                          className={`p-4 border-b border-black/5 cursor-pointer transition-colors ${
-                            selectedContact?.id === lab.id
-                              ? 'bg-black text-white'
-                              : 'bg-white hover:bg-black/[0.02]'
-                          }`}
+                          className={`p-4 border-b border-black/5 cursor-pointer transition-colors ${selectedContact?.id === lab.id
+                            ? 'bg-black text-white'
+                            : 'bg-white hover:bg-black/[0.02]'
+                            }`}
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-3">
@@ -758,8 +764,8 @@ Severity: ${suggestion.severity}`
           </div>
 
           {/* Chat Area */}
-          <div className={`${showSuggestions ? 'lg:col-span-3' : 'lg:col-span-3'} h-full flex flex-col`}>
-            <div className="h-full flex flex-col bg-white border border-black/10">
+          <div className={`${showSuggestions ? 'lg:col-span-3' : 'lg:col-span-3'} lg:h-full min-h-0`}>
+            <div className="lg:h-full min-h-[520px] flex flex-col bg-white border border-black/10 overflow-hidden">
               {selectedContact ? (
                 <>
                   <div className="border-b border-black/10 p-6 bg-black/[0.02] flex-shrink-0 flex items-center justify-between relative overflow-hidden">
@@ -774,7 +780,7 @@ Severity: ${suggestion.severity}`
                         )}
                       </div>
                       <div>
-                        <h2 className="text-xl font-bold uppercase">{selectedContact.name}</h2>
+                        <h2 className="text-xl font-bold uppercase text-black">{selectedContact.name || 'Anonymous User'}</h2>
                         <p className="text-[10px] font-mono text-black/60 uppercase">
                           {selectedContact.role === 'patient' ? 'Patient' : 'Lab Technician'} • {selectedContact.specialty}
                           {onlineUsers.has(selectedContact.id) && (
@@ -785,7 +791,7 @@ Severity: ${suggestion.severity}`
                     </div>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto p-6 space-y-6 min-h-0 scrollbar-thin relative contacts-container" ref={messagesContainerRef}>
+                  <div className="flex-1 overflow-y-auto p-6 space-y-6 min-h-0 scrollbar-thin relative" ref={messagesContainerRef}>
                     {messages.length > 0 && canScrollUp && (
                       <div className="sticky top-0 z-10 bg-white/90 backdrop-blur-sm pb-2 mb-4 border-b border-black/10">
                         <div className="text-center">
@@ -795,7 +801,7 @@ Severity: ${suggestion.severity}`
                         </div>
                       </div>
                     )}
-                    
+
                     {messages.map((message) => (
                       <div key={message.id} className={`flex ${message.sender_id === currentUserId ? 'justify-end' : 'justify-start'}`}>
                         <div className={`p-4 max-w-[80%] rounded-none ${message.sender_id === currentUserId ? 'bg-black text-white' : 'bg-black/5 border border-black/10'}`}>
@@ -815,9 +821,9 @@ Severity: ${suggestion.severity}`
                         </div>
                       </div>
                     ))}
-                    
+
                     <div ref={messagesEndRef} />
-                    
+
                     {messages.length > 0 && canScrollDown && (
                       <div className="sticky bottom-0 z-10 bg-white/90 backdrop-blur-sm pt-2 mt-4 border-t border-black/10">
                         <div className="text-center">
@@ -862,8 +868,8 @@ Severity: ${suggestion.severity}`
 
           {/* ML Suggestions Panel */}
           {showSuggestions && (
-            <div className="lg:col-span-1 h-full">
-              <div className="h-full flex flex-col bg-white border border-black/10">
+            <div className="lg:col-span-1 lg:h-full min-h-0">
+              <div className="lg:h-full flex flex-col bg-white border border-black/10">
                 <div className="flex-shrink-0 border-b border-black/10 p-6 bg-black/[0.02]">
                   <h2 className="text-lg font-bold uppercase flex items-center">
                     <Brain className="h-5 w-5 mr-2" />
@@ -876,7 +882,7 @@ Severity: ${suggestion.severity}`
                   </h2>
                   <p className="text-[10px] font-mono text-black/60 uppercase mt-1">Lab Analysis</p>
                 </div>
-                
+
                 <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin contacts-container">
                   {mlSuggestions.length === 0 ? (
                     <div className="text-center py-8">
@@ -887,11 +893,10 @@ Severity: ${suggestion.severity}`
                     mlSuggestions.map((suggestion) => (
                       <div
                         key={suggestion.id}
-                        className={`p-4 border cursor-pointer transition-colors ${
-                          selectedSuggestion?.id === suggestion.id
-                            ? 'border-black bg-black/[0.02]'
-                            : 'border-black/10 hover:border-black/30'
-                        }`}
+                        className={`p-4 border cursor-pointer transition-colors ${selectedSuggestion?.id === suggestion.id
+                          ? 'border-black bg-black/[0.02]'
+                          : 'border-black/10 hover:border-black/30'
+                          }`}
                         onClick={() => setSelectedSuggestion(suggestion)}
                       >
                         <div className="flex items-start justify-between mb-3">
@@ -956,7 +961,7 @@ Severity: ${suggestion.severity}`
                   <span className="font-mono text-xl leading-none">×</span>
                 </Button>
               </div>
-              
+
               <div className="flex-1 overflow-y-auto p-8 space-y-8">
                 <div className="grid grid-cols-2 gap-px bg-black/10 border border-black/10">
                   <div className="p-4 bg-white">

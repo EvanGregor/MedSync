@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -10,10 +9,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Activity, Users, Video, Phone, MessageSquare, Calendar, ArrowLeft, CheckCircle, Clock } from "lucide-react"
 import { createClient } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
-import Image from "next/image"
 import Link from "next/link"
 import { format, parseISO } from "date-fns"
-import ZoomVideoCall from "@/components/zoom-video-call"
+import MedicalVideoCall from "@/components/medical-video-call"
 import ScheduleAppointmentModal from "@/components/schedule-appointment-modal"
 
 interface Consultation {
@@ -644,7 +642,7 @@ export default function ConsultationsPage() {
 
       {/* Video Call Component */}
       {selectedConsultationForCall && (
-        <ZoomVideoCall
+        <MedicalVideoCall
           isOpen={isVideoCallOpen}
           onClose={() => {
             setIsVideoCallOpen(false)

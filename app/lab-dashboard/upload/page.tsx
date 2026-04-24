@@ -120,11 +120,11 @@ export default function LabUploadPage() {
           if (byUserId && !userIdError) {
             profile = byUserId
           } else {
-            // Try by short_id
+            // Try by short_id (case-insensitive)
             const { data: byShortId, error: shortIdError } = await supabase
               .from('patient_profiles_unified')
               .select('*')
-              .eq('short_id', trimmedId)
+              .ilike('short_id', trimmedId)
               .maybeSingle()
             
             if (byShortId && !shortIdError) {
@@ -141,7 +141,7 @@ export default function LabUploadPage() {
         const { data: mapping } = await supabase
           .from('user_short_ids')
           .select('user_id')
-          .eq('short_id', trimmedId)
+          .ilike('short_id', trimmedId)
           .eq('role', 'patient')
           .maybeSingle()
 
@@ -244,7 +244,7 @@ export default function LabUploadPage() {
         const { data: mapping, error: mapErr } = await supabase
           .from('user_short_ids')
           .select('user_id')
-          .eq('short_id', doctorId)
+          .ilike('short_id', doctorId)
           .maybeSingle()
 
         if (!mapErr && mapping?.user_id) {
@@ -394,7 +394,7 @@ export default function LabUploadPage() {
           const { data: mapRow } = await supabaseResolve
             .from('user_short_ids')
             .select('user_id')
-            .eq('short_id', formData.doctorId)
+            .ilike('short_id', formData.doctorId)
             .maybeSingle()
           resolvedDoctorId = mapRow?.user_id || null
         }
@@ -417,7 +417,7 @@ export default function LabUploadPage() {
           const { data: mapRow } = await supabaseResolve
             .from('user_short_ids')
             .select('user_id')
-            .eq('short_id', formData.patientId)
+            .ilike('short_id', formData.patientId)
             .eq('role', 'patient')
             .maybeSingle()
           resolvedPatientId = mapRow?.user_id || null

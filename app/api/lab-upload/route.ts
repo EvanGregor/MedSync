@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { UUID_REGEX } from '@/lib/constants'
+import { verifySession, unauthorizedResponse } from '@/lib/api-utils'
 
 export async function POST(request: NextRequest) {
   try {
+    // Verify session
+    const { user } = await verifySession()
+    if (!user) {
+      return unauthorizedResponse()
+    }
     // Validate environment variables
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
       console.error('Missing Supabase environment variables')
@@ -53,7 +59,7 @@ export async function POST(request: NextRequest) {
       const { data: shortMatch, error: shortErr } = await supabase
         .from('user_short_ids')
         .select('user_id')
-        .eq('short_id', patientId)
+        .ilike('short_id', patientId)
         .maybeSingle()
 
       if (shortErr) {
@@ -74,7 +80,7 @@ export async function POST(request: NextRequest) {
       const { data: shortDoc, error: docErr } = await supabase
         .from('user_short_ids')
         .select('user_id')
-        .eq('short_id', doctorId)
+        .ilike('short_id', doctorId)
         .maybeSingle()
 
       if (docErr) {
@@ -125,7 +131,7 @@ export async function POST(request: NextRequest) {
       await supabase
         .from('notifications')
         .insert({
-          type: 'new_report',
+          notification_type: 'new_report',
           title: 'New Lab Report Available',
           message: `A new ${testType} report has been uploaded for Patient ID: ${patientId}`,
           target_role: 'doctor',

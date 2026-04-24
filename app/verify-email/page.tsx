@@ -9,7 +9,9 @@ import { CheckCircle, XCircle, Mail, ArrowLeft, Loader2 } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 
-export default function VerifyEmailPage() {
+import { Suspense } from "react"
+
+function VerifyEmailContent() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
   const [message, setMessage] = useState('')
   const router = useRouter()
@@ -125,5 +127,17 @@ export default function VerifyEmailPage() {
         </Card>
       </div>
     </div>
+  )
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin text-black/40" />
+      </div>
+    }>
+      <VerifyEmailContent />
+    </Suspense>
   )
 }

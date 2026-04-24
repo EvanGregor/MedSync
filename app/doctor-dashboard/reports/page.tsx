@@ -638,6 +638,26 @@ export default function DoctorPatientManagementPage() {
                   <Download className="h-4 w-4 mr-2" />
                   Download
                 </Button>
+                {report.ml_suggestion?.status === 'pending_review' && (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleUpdateMLStatus(report.ml_suggestion.id, 'accepted')}
+                      className="border-green-600 text-green-700 hover:bg-green-50 rounded-none font-mono uppercase text-xs h-10 px-6 flex items-center"
+                    >
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Approve AI
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleUpdateMLStatus(report.ml_suggestion.id, 'rejected')}
+                      className="border-red-600 text-red-700 hover:bg-red-50 rounded-none font-mono uppercase text-xs h-10 px-6 flex items-center"
+                    >
+                      <AlertTriangle className="h-4 w-4 mr-2" />
+                      Reject AI
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           </div>

@@ -1,13 +1,13 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
-  Activity, Users, FileText, MessageSquare, Calendar, Brain,
-  AlertCircle, ArrowRight, Video, Clock, Stethoscope, ClipboardList,
-  TrendingUp, Shield, Sparkles
+  Activity, Users, FileText, Calendar, Brain,
+  AlertCircle, ArrowRight, Video, Clock,
+  Sparkles
 } from "lucide-react"
 import { createClient } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import Link from "next/link"
 import { format, parseISO } from "date-fns"
 import Sidebar from "@/components/medical/navigation/Sidebar"
+import { useAuthCheck } from "@/hooks/use-auth-check"
 
 interface UrgentReview {
   id: string
@@ -53,10 +54,11 @@ interface DoctorStats {
   aiInsights: number
 }
 
+const PENDING_REVIEW_STATUSES = ['pending', 'pending_review', 'uploaded', 'in_review']
+
 export default function DoctorDashboard() {
-  const [user, setUser] = useState<any>(null)
-  const [shortId, setShortId] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { user, shortId, loading: authLoading } = useAuthCheck("doctor")
+  const [dataLoading, setDataLoading] = useState(true)
   const [urgentReviews, setUrgentReviews] = useState<UrgentReview[]>([])
   const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([])
   const [aiInsights, setAiInsights] = useState<AIInsight[]>([])
@@ -69,110 +71,106 @@ export default function DoctorDashboard() {
   const [selectedReview, setSelectedReview] = useState<UrgentReview | null>(null)
   const [selectedInsight, setSelectedInsight] = useState<AIInsight | null>(null)
   const router = useRouter()
-  const loadingRef = useRef(false)
 
   useEffect(() => {
-    const checkUser = async () => {
-      if (loadingRef.current) return
-      loadingRef.current = true
-      setLoading(true)
-
-      try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-
-        if (!user || user.user_metadata?.role !== "doctor") {
-          router.push("/login")
-          return
-        }
-
-        setUser(user)
-
-        try {
-          let resolvedShortId: string | null = null
-          const { data: userRow } = await supabase.from('users').select('short_id').eq('auth_id', user.id).maybeSingle()
-          resolvedShortId = userRow?.short_id || null
-
-          if (!resolvedShortId) {
-            const { data: shortRow } = await supabase.from('user_short_ids').select('short_id').eq('user_id', user.id).maybeSingle()
-            resolvedShortId = shortRow?.short_id || null
-          }
-          setShortId(resolvedShortId)
-        } catch (e) {
-          console.warn('Failed to load short ID:', e)
-        }
-
-        await loadDashboardData(user.id)
-      } catch (error) {
-        console.error('Error in checkUser:', error)
-      } finally {
-        setLoading(false)
-        loadingRef.current = false
-      }
+    if (!authLoading && user) {
+      loadDashboardData(user.id)
     }
+  }, [authLoading, user])
 
-    checkUser()
-  }, [])
-
-  const loadDashboardData = async (doctorId: string) => {
+  const loadDashboardData = async (authUserId: string) => {
     const supabase = createClient()
+    setDataLoading(true)
     try {
-      let actualDoctorId = doctorId
-      const { data: doctorData } = await supabase.from('doctors').select('id').eq('user_id', doctorId).single()
+      // 1. Resolve internal doctor ID
+      let actualDoctorId = authUserId
+      const { data: doctorData } = await supabase
+        .from('doctors')
+        .select('id')
+        .eq('user_id', authUserId)
+        .maybeSingle()
+      
       if (doctorData) actualDoctorId = doctorData.id
+
+      // Reports can store doctor_id as auth UUID, doctors.id, or short_id.
+      let doctorShortId: string | null = null
+      try {
+        const { data: shortIdData } = await supabase
+          .from('user_short_ids')
+          .select('short_id')
+          .eq('user_id', authUserId)
+          .maybeSingle()
+        doctorShortId = shortIdData?.short_id || null
+      } catch (shortIdError) {
+        console.warn('Could not fetch doctor short ID for dashboard:', shortIdError)
+      }
+
+      const doctorIdentifiers = [authUserId, actualDoctorId, doctorShortId].filter(
+        (value): value is string => Boolean(value)
+      )
 
       const today = format(new Date(), 'yyyy-MM-dd')
 
-      const { data: todayAppointments } = await supabase
+      // 2. Fetch Today's Appointments
+      const { data: appts } = await supabase
         .from('appointments')
         .select('*')
         .eq('doctor_id', actualDoctorId)
         .eq('appointment_date', today)
+        .order('start_time', { ascending: true })
 
+      setTodayAppointments(appts || [])
+
+      // 3. Fetch Pending Reports (Reviews)
       const { data: reports } = await supabase
         .from('reports')
         .select('*')
-        .eq('doctor_id', actualDoctorId)
+        .in('doctor_id', doctorIdentifiers)
         .order('created_at', { ascending: false })
 
-      const { data: urgentReports } = await supabase
-        .from('reports')
-        .select('*')
-        .eq('doctor_id', actualDoctorId)
-        .in('priority', ['urgent', 'high'])
-        .limit(5)
+      // 4. Keep only truly pending reports for dashboard review widgets
+      const pendingReports = (reports || []).filter((report: any) =>
+        PENDING_REVIEW_STATUSES.includes((report.status || 'pending').toLowerCase())
+      )
 
-      const consultations = todayAppointments?.length || 0
-      setTodayAppointments(todayAppointments || [])
-      const pendingReviews = reports?.length || 0
-      const activePatients = Math.max(consultations * 3, 12)
-      const aiInsights = Math.floor(Math.random() * 8) + 12
+      // 5. Calculate Stats
+      // Active patients = unique patients from appointments + reports
+      const patientIds = new Set([
+        ...(appts?.map(a => a.patient_id) || []),
+        ...(reports?.map(r => r.patient_id) || [])
+      ])
 
-      setStats({ activePatients, pendingReviews, consultations, aiInsights })
+      setStats({
+        activePatients: patientIds.size,
+        pendingReviews: pendingReports.length,
+        consultations: appts?.length || 0,
+        aiInsights: 0 // Placeholder until AI insights table exists
+      })
 
-      const reviews = urgentReports?.map(report => ({
+      const reviews = pendingReports.slice(0, 8).map((report: any) => ({
         id: report.id,
         patient_name: report.patient_name || 'Unknown Patient',
-        report_type: report.report_type || 'Medical Report',
+        report_type: report.report_type || report.test_type || 'Medical Report',
         description: report.description || 'Report requires review',
-        priority: report.priority || 'normal',
-        created_at: report.created_at,
-        status: report.status
-      })) || [
-          { id: '1', patient_name: 'John Doe', report_type: 'CT Scan', description: 'Abnormal findings in chest area', priority: 'urgent', created_at: today, status: 'pending' },
-          { id: '2', patient_name: 'Sarah Smith', report_type: 'Blood Work', description: 'Elevated cardiac markers', priority: 'high', created_at: today, status: 'pending' }
-        ]
-      setUrgentReviews(reviews as UrgentReview[])
+        priority: (report.priority as any) || 'normal',
+        created_at: report.created_at || report.uploaded_at,
+        status: report.status || 'pending'
+      })) || []
+      
+      setUrgentReviews(reviews)
 
+      // Mock AI insights for now but without random
       setAiInsights([
-        { id: '1', type: 'pattern', title: 'Pattern Recognition', description: 'Similar cases suggest early intervention could improve outcomes', created_at: today, priority: 'high' },
-        { id: '2', type: 'treatment', title: 'Treatment Recommendation', description: 'AI suggests considering alternative therapy based on patient history', created_at: today, priority: 'medium' }
+        { id: '1', type: 'pattern', title: 'Pattern Recognition', description: 'Similar cases suggest early intervention could improve outcomes', created_at: today, priority: 'high' }
       ])
 
     } catch (error) {
-      console.error('Error loading data:', error)
+      console.error('Error loading dashboard data:', error)
+    } finally {
+      setDataLoading(false)
     }
   }
+
 
   const handleLogout = async () => {
     const supabase = createClient()
@@ -180,7 +178,7 @@ export default function DoctorDashboard() {
     router.push("/")
   }
 
-  if (loading) {
+  if (authLoading || dataLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-transparent">
         <div className="flex flex-col items-center">

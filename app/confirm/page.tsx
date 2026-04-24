@@ -11,7 +11,9 @@ import { CheckCircle, XCircle, Lock, ArrowLeft, Eye, EyeOff } from "lucide-react
 import Link from "next/link"
 import Image from "next/image"
 
-export default function ConfirmPage() {
+import { Suspense } from "react"
+
+function ConfirmContent() {
   const [status, setStatus] = useState<'loading' | 'reset-password' | 'success' | 'error'>('loading')
   const [message, setMessage] = useState('')
   const [password, setPassword] = useState('')
@@ -238,5 +240,17 @@ export default function ConfirmPage() {
         </Card>
       </div>
     </div>
+  )
+}
+
+export default function ConfirmPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <Lock className="h-12 w-12 text-medical-primary animate-pulse" />
+      </div>
+    }>
+      <ConfirmContent />
+    </Suspense>
   )
 }

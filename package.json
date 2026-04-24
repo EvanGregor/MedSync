@@ -1,6 +1,6 @@
 {
-  "name": "my-v0-project",
-  "version": "0.1.0",
+  "name": "medsync",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "build": "next build",
@@ -41,8 +41,6 @@
     "@radix-ui/react-tooltip": "latest",
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
-    "@zoom/meetingsdk": "^4.0.0",
-    "agora-rtc-sdk-ng": "^4.24.0",
     "autoprefixer": "^10.4.20",
     "axios": "^1.11.0",
     "class-variance-authority": "^0.7.1",

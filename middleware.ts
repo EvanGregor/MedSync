@@ -1,8 +1,9 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
-// Simple in-memory rate limiter for demo purposes
-// In production, this should use Redis/Upstash
+// IMPORTANT: In-memory rate limiting only works on a single instance.
+// For production Vercel deployment (Serverless), please use Upstash/Redis.
+// Example: const redis = new Redis({ ... });
 const rateLimitMap = new Map();
 
 const rateLimit = (ip: string, limit: number, windowMs: number) => {
@@ -90,6 +91,17 @@ export async function middleware(request: NextRequest) {
     if (requestedDashboard === "lab-dashboard" && userRole !== "lab") {
       return NextResponse.redirect(new URL("/login", request.url))
     }
+  }
+
+  // 3. Security Headers
+  supabaseResponse.headers.set('X-Frame-Options', 'DENY')
+  supabaseResponse.headers.set('X-Content-Type-Options', 'nosniff')
+  supabaseResponse.headers.set('Referrer-Policy', 'origin-when-cross-origin')
+  supabaseResponse.headers.set('Permissions-Policy', 'camera=*, microphone=*, geolocation=()')
+  
+  // Strict-Transport-Security (HSTS)
+  if (process.env.NODE_ENV === 'production') {
+    supabaseResponse.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload')
   }
 
   return supabaseResponse

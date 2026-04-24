@@ -4,7 +4,6 @@ import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
-  Users,
   FileText,
   MessageSquare,
   Calendar,
@@ -26,7 +25,6 @@ interface SidebarProps {
 const menuItems = {
   doctor: [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, href: '/doctor-dashboard' },
-    { id: 'patients', label: 'Patients', icon: Users, href: '/doctor-dashboard/reports' },
     { id: 'reports', label: 'Reports', icon: FileText, href: '/doctor-dashboard/reports' },
     { id: 'communication', label: 'Messages', icon: MessageSquare, href: '/doctor-dashboard/communication' },
     { id: 'schedule', label: 'Schedule', icon: Calendar, href: '/doctor-dashboard/schedule' },

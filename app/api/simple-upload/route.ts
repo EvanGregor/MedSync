@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { UUID_REGEX } from '@/lib/constants'
+import { verifySession, unauthorizedResponse } from '@/lib/api-utils'
 
 export async function POST(request: NextRequest) {
   try {
+    // Verify session
+    const { user } = await verifySession()
+    if (!user) {
+      return unauthorizedResponse()
+    }
     // Validate environment variables
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
       console.error('Missing Supabase environment variables')

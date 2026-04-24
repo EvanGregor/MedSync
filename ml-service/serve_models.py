@@ -25,6 +25,14 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from torchvision import transforms
 from ultralytics import YOLO
+from dotenv import load_dotenv
+
+# Load environment variables from project root
+env_path = Path(__file__).resolve().parent.parent / ".env.local"
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+else:
+    load_dotenv() # Fallback to default .env
 
 # Ensure console output can handle Unicode log messages on Windows.
 if hasattr(sys.stdout, "reconfigure"):

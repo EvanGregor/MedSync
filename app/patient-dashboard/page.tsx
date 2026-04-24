@@ -1,16 +1,15 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Activity, FileText, MessageSquare, Calendar, Brain, Heart, Video, ArrowRight, ClipboardList } from "lucide-react"
+import { Activity, FileText, MessageSquare, Calendar, Brain, Heart, Video, ArrowRight } from "lucide-react"
 import { createClient } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { format, parseISO } from "date-fns"
 import Sidebar from "@/components/medical/navigation/Sidebar"
 import StatusBadge from "@/components/medical/common/StatusBadge"
+import { useAuthCheck } from "@/hooks/use-auth-check"
 
 interface PatientActivity {
   id: string
@@ -30,9 +29,8 @@ interface PatientStats {
 }
 
 export default function PatientDashboard() {
-  const [user, setUser] = useState<any>(null)
-  const [shortId, setShortId] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { user, shortId, loading: authLoading } = useAuthCheck("patient")
+  const [dataLoading, setDataLoading] = useState(true)
   const [recentActivity, setRecentActivity] = useState<PatientActivity[]>([])
   const [stats, setStats] = useState<PatientStats>({
     recentReports: 0,
@@ -41,77 +39,38 @@ export default function PatientDashboard() {
     healthScore: 85
   })
   const router = useRouter()
-  const loadingRef = useRef(false)
 
   useEffect(() => {
-    const checkUser = async () => {
-      if (loadingRef.current) return
-      loadingRef.current = true
-
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-
-      if (!user || user.user_metadata?.role !== "patient") {
-        router.push("/login")
-        return
-      }
-
-      setUser(user)
-
-      try {
-        let resolvedShortId: string | null = null
-        const { data: userRow } = await supabase.from('users').select('short_id').eq('auth_id', user.id).maybeSingle()
-        resolvedShortId = userRow?.short_id || null
-
-        if (!resolvedShortId) {
-          const { data: shortRow } = await supabase.from('user_short_ids').select('short_id').eq('user_id', user.id).maybeSingle()
-          resolvedShortId = shortRow?.short_id || null
-        }
-        setShortId(resolvedShortId)
-      } catch (e) {
-        console.warn('Failed to load short ID for patient:', e)
-      }
-
-      await loadPatientData(user.id)
-      setLoading(false)
-      loadingRef.current = false
+    if (!authLoading && user) {
+      loadPatientData(user.id)
     }
-
-    checkUser()
-  }, [])
+  }, [authLoading, user])
 
   const loadPatientData = async (patientId: string) => {
     const supabase = createClient()
+    setDataLoading(true)
 
     try {
-      // First, try to get the patient's record from the patients table
+      // 1. Resolve internal patient ID
       let actualPatientId = patientId
-      const { data: patientData, error: patientError } = await supabase
+      const { data: patientData } = await supabase
         .from('patients')
-        .select('id, name')
+        .select('id')
         .eq('user_id', patientId)
-        .order('created_at', { ascending: false })
-        .limit(1)
         .maybeSingle()
 
-      if (patientData) {
-        actualPatientId = patientData.id
-        console.log('✅ Found patient record:', patientData)
-      } else {
-        console.log('⚠️ No patient record found for user_id:', patientId, 'using user_id directly')
-      }
+      if (patientData) actualPatientId = patientData.id
 
-      // Query appointments using both the patient record ID and the auth user ID
-      // This handles both cases where doctor uses patient table ID or auth user ID
+      // 2. Fetch Appointments
+      const today = format(new Date(), 'yyyy-MM-dd')
       const { data: appointments } = await supabase
         .from('appointments')
         .select('*')
         .or(`patient_id.eq.${actualPatientId},patient_id.eq.${patientId}`)
-        .gte('appointment_date', format(new Date(), 'yyyy-MM-dd'))
+        .gte('appointment_date', today)
         .order('appointment_date', { ascending: true })
 
-      console.log('📅 Found appointments for patient:', appointments?.length || 0)
-
+      // 3. Fetch Reports
       const { data: reports } = await supabase
         .from('reports')
         .select('*')
@@ -119,6 +78,7 @@ export default function PatientDashboard() {
         .order('created_at', { ascending: false })
         .limit(5)
 
+      // 4. Fetch Messages
       const { data: messages } = await supabase
         .from('messages')
         .select('*')
@@ -126,53 +86,55 @@ export default function PatientDashboard() {
         .order('created_at', { ascending: false })
         .limit(10)
 
-      const demoActivity: PatientActivity[] = [
-        {
-          id: '1',
-          type: 'appointment',
-          title: 'Annual Checkup',
-          description: 'Scheduled with Dr. Smith',
-          date: format(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'),
-          status: 'scheduled',
-          icon: 'calendar'
-        },
-        {
-          id: '2',
-          type: 'report',
-          title: 'Blood Test Results',
-          description: 'Your latest blood work is ready',
-          date: format(new Date(), 'yyyy-MM-dd'),
-          status: 'completed',
-          icon: 'file-text'
-        }
-      ]
+      // 5. Map Activity
+      const activities: PatientActivity[] = []
 
-      // Map real appointments to activity
-      const appointmentActivities: PatientActivity[] = (appointments || []).map(apt => ({
-        id: apt.id,
-        type: 'appointment' as const,
-        title: apt.appointment_type || 'Consultation',
-        description: `Scheduled with ${apt.doctor_name || 'Doctor'}`,
-        date: apt.appointment_date,
-        status: apt.status || 'scheduled',
-        icon: 'calendar'
-      }))
+      if (appointments) {
+        appointments.forEach(apt => {
+          activities.push({
+            id: apt.id,
+            type: 'appointment',
+            title: apt.appointment_type || 'Consultation',
+            description: `Scheduled with ${apt.doctor_name || 'Doctor'}`,
+            date: apt.appointment_date,
+            status: apt.status || 'scheduled',
+            icon: 'calendar'
+          })
+        })
+      }
 
-      const activityData = appointmentActivities.length > 0 ? appointmentActivities : demoActivity
+      if (reports) {
+        reports.forEach(report => {
+          activities.push({
+            id: report.id,
+            type: 'report',
+            title: report.test_type || 'Medical Report',
+            description: 'New results available',
+            date: report.created_at || report.uploaded_at,
+            status: 'completed',
+            icon: 'file-text'
+          })
+        })
+      }
 
-      setRecentActivity(activityData)
+      // Sort activities by date descending
+      activities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      setRecentActivity(activities.slice(0, 5))
 
       setStats({
-        recentReports: reports?.length || 1,
-        upcomingAppointments: appointments?.length || 1,
-        unreadMessages: messages?.filter(m => m.read === false).length || 1,
-        healthScore: 85 // Mock health score
+        recentReports: reports?.length || 0,
+        upcomingAppointments: appointments?.length || 0,
+        unreadMessages: messages?.filter(m => m.read === false).length || 0,
+        healthScore: 85 // Mock health score for now
       })
 
     } catch (error) {
-      console.error('Error loading patient data:', error)
+      console.error('Error loading patient dashboard data:', error)
+    } finally {
+      setDataLoading(false)
     }
   }
+
 
   const handleLogout = async () => {
     const supabase = createClient()
@@ -190,7 +152,7 @@ export default function PatientDashboard() {
     }
   }
 
-  if (loading) {
+  if (authLoading || dataLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-transparent">
         <div className="flex flex-col items-center">

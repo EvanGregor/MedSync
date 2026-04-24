@@ -8,10 +8,15 @@ import axios from 'axios'
 import FormData from 'form-data'
 import { UUID_REGEX } from '@/lib/constants'
 import { analysisRequestSchema } from '@/lib/schemas'
+import { verifySession, unauthorizedResponse } from '@/lib/api-utils'
 
 export async function POST(request: NextRequest) {
-
   try {
+    // Verify session
+    const { user } = await verifySession()
+    if (!user) {
+      return unauthorizedResponse()
+    }
     // Validate environment variables first
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
       console.error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable')
@@ -142,7 +147,7 @@ export async function POST(request: NextRequest) {
       const { data: shortDoc, error: docErr } = await supabase
         .from('user_short_ids')
         .select('user_id')
-        .eq('short_id', doctorId)
+        .ilike('short_id', doctorId)
         .maybeSingle()
 
       if (docErr) {
@@ -164,7 +169,7 @@ export async function POST(request: NextRequest) {
       const { data: shortMatch, error: shortErr } = await supabase
         .from('user_short_ids')
         .select('user_id')
-        .eq('short_id', patientId)
+        .ilike('short_id', patientId)
         .maybeSingle()
 
       if (shortErr) {

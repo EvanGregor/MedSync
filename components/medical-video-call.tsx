@@ -39,7 +39,7 @@ interface Consultation {
   patient_name?: string
 }
 
-interface ZoomVideoCallProps {
+interface MedicalVideoCallProps {
   isOpen: boolean
   onClose: () => void
   consultation: Consultation
@@ -78,12 +78,12 @@ interface ChatBroadcastPayload {
   timestamp: string
 }
 
-export default function ZoomVideoCall({
+export default function MedicalVideoCall({
   isOpen,
   onClose,
   consultation,
   userRole
-}: ZoomVideoCallProps) {
+}: MedicalVideoCallProps) {
   const [isConnecting, setIsConnecting] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
   const [isLoadingMeeting, setIsLoadingMeeting] = useState(false)
@@ -155,8 +155,6 @@ export default function ZoomVideoCall({
     }
   }, [chatMessages])
 
-  // Ensure local self-preview binds even when media was created
-  // before the preview video element mounted.
   useEffect(() => {
     if (!isConnected || !localVideoRef.current) return
 
@@ -168,9 +166,7 @@ export default function ZoomVideoCall({
       localVideoRef.current.srcObject = previewStream
       localVideoRef.current.style.transform = 'none'
       localVideoRef.current.style.webkitTransform = 'none'
-      void localVideoRef.current.play().catch(() => {
-        // Ignore autoplay race; interaction usually resolves this.
-      })
+      void localVideoRef.current.play().catch(() => {})
       setHasLocalStream(true)
     }
   }, [isConnected, isScreenSharing, isVideoOn])
@@ -270,9 +266,7 @@ export default function ZoomVideoCall({
   }
 
   const loadMeetingDetails = async (): Promise<MeetingDetails | null> => {
-    if (!consultation?.id) {
-      return null
-    }
+    if (!consultation?.id) return null
 
     const userId = await resolveCurrentUserId()
     if (!participantNameRef.current) {
@@ -310,13 +304,7 @@ export default function ZoomVideoCall({
 
       if (error) {
         console.error('❌ Error loading meeting details:', error)
-        if (error.code === '42501') {
-          setConnectionError('Permission denied while reading meeting data.')
-        } else if (error.code === '42P01') {
-          setConnectionError('Meeting table is missing. Please run database setup scripts.')
-        } else {
-          setConnectionError('Failed to load meeting details. Please retry.')
-        }
+        setConnectionError('Failed to load meeting details. Please retry.')
         return null
       }
 
@@ -371,19 +359,11 @@ export default function ZoomVideoCall({
     const supabase = createClient()
 
     try {
-      const { error: deactivateError } = await supabase
+      await supabase
         .from('consultation_meetings')
         .update({ is_active: false })
         .eq('appointment_id', consultation.id)
         .eq('is_active', true)
-
-      if (deactivateError) {
-        console.error('❌ Error deactivating previous meetings:', deactivateError)
-        if (deactivateError.code === '42501') {
-          setConnectionError('Permission denied while preparing meeting state.')
-          return null
-        }
-      }
 
       const { data, error } = await supabase
         .from('consultation_meetings')
@@ -398,19 +378,10 @@ export default function ZoomVideoCall({
         .single()
 
       if (error) {
-        console.error('❌ Error creating meeting record:', error)
-
         if (error.code === '23505') {
           return await loadMeetingDetailsRef.current()
         }
-
-        if (error.code === '42501') {
-          setConnectionError('Permission denied while creating meeting. Check RLS policy for host_id.')
-        } else if (error.code === '22P02') {
-          setConnectionError('Invalid appointment ID format. Please reschedule this consultation.')
-        } else {
-          setConnectionError('Failed to create meeting record. Please retry.')
-        }
+        setConnectionError('Failed to create meeting record. Please retry.')
         return null
       }
 
@@ -455,9 +426,7 @@ export default function ZoomVideoCall({
   }
 
   const createPeerConnection = async () => {
-    if (peerConnectionRef.current) {
-      return peerConnectionRef.current
-    }
+    if (peerConnectionRef.current) return peerConnectionRef.current
 
     const iceServers: RTCIceServer[] = [
       { urls: 'stun:stun.l.google.com:19302' },
@@ -496,7 +465,6 @@ export default function ZoomVideoCall({
 
     peerConnection.onconnectionstatechange = () => {
       const state = peerConnection.connectionState
-      // Do not mark remote stream as available until ontrack fires.
       if (state === 'failed' || state === 'disconnected' || state === 'closed') {
         setHasRemoteStream(false)
       }
@@ -569,23 +537,13 @@ export default function ZoomVideoCall({
 
     try {
       if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setConnectionError(
-          'Camera/microphone API is unavailable in this browser context. Joining without local AV.'
-        )
+        setConnectionError('Media devices not supported in this browser.')
         return null
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          facingMode: 'user'
-        },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        }
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+        audio: { echoCancellation: true, noiseSuppression: true }
       })
 
       localStreamRef.current = stream
@@ -595,25 +553,13 @@ export default function ZoomVideoCall({
 
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
-        localVideoRef.current.style.transform = 'none'
-        localVideoRef.current.style.webkitTransform = 'none'
-        void localVideoRef.current.play().catch(() => {
-          // Ignore autoplay errors; user interaction will usually resolve playback.
-        })
+        void localVideoRef.current.play().catch(() => {})
       }
 
       return stream
     } catch (error: any) {
       console.error('❌ Error initializing local media:', error)
-      if (error?.name === 'NotAllowedError') {
-        setConnectionError('Camera and microphone permission denied.')
-      } else if (error?.name === 'NotFoundError') {
-        setConnectionError('No camera/microphone found on this device.')
-      } else if (error?.name === 'NotReadableError') {
-        setConnectionError('Camera or microphone is already in use by another app/tab. Joined without local AV.')
-      } else {
-        setConnectionError('Unable to access camera/microphone. Joining without local AV.')
-      }
+      setConnectionError('Unable to access camera/microphone.')
       setHasLocalStream(false)
       return null
     }
@@ -655,9 +601,7 @@ export default function ZoomVideoCall({
         return
       }
 
-      if (!isConnectedRef.current) {
-        return
-      }
+      if (!isConnectedRef.current) return
 
       if (payload.type === 'offer' && payload.description) {
         const pc = await createPeerConnection()
@@ -711,7 +655,7 @@ export default function ZoomVideoCall({
     }
 
     if (!isChannelReady) {
-      setConnectionError('Connecting secure signaling channel. Please retry in a moment.')
+      setConnectionError('Connecting secure signaling channel...')
       return
     }
 
@@ -720,10 +664,7 @@ export default function ZoomVideoCall({
 
     try {
       const resolvedUserId = await resolveCurrentUserId()
-      if (!resolvedUserId) {
-        setConnectionError('Authentication error. Please sign in again.')
-        return
-      }
+      if (!resolvedUserId) return
 
       let activeMeeting = meetingDetailsRef.current
       if (!activeMeeting) {
@@ -733,38 +674,26 @@ export default function ZoomVideoCall({
       }
 
       if (!activeMeeting) {
-        setConnectionError(
-          userRole === 'patient'
-            ? 'No meeting available yet. Please wait for the doctor to start.'
-            : 'Unable to create meeting. Please retry.'
-        )
+        setConnectionError(userRole === 'patient' ? 'Waiting for doctor to start...' : 'Unable to create meeting.')
         return
       }
+
       const shouldHost = shouldCurrentUserActAsHost(activeMeeting, resolvedUserId)
       setIsHost(shouldHost)
       isHostRef.current = shouldHost
 
       const localStream = await initializeLocalMedia()
       const pc = await createPeerConnection()
-      if (localStream) {
-        attachLocalTracks(pc)
-      }
+      if (localStream) attachLocalTracks(pc)
 
       setIsConnected(true)
-      addChatMessage('System', `Meeting ${shouldHost ? 'started' : 'joined'} (ID: ${activeMeeting.meeting_id}).`)
-      if (!localStream) {
-        addChatMessage('System', 'Joined without camera/microphone. Close other apps/tabs using your devices to enable AV.')
-      }
-
+      addChatMessage('System', `Secure link established (ID: ${activeMeeting.meeting_id}).`)
+      
       await sendSignal({ type: 'ready' })
-      if (shouldHost) {
-        await createAndSendOffer()
-      }
+      if (shouldHost) await createAndSendOffer()
     } catch (error) {
-      console.error('❌ Error joining/starting meeting:', error)
-      if (!connectionError) {
-        setConnectionError('Failed to start the video call. Please retry.')
-      }
+      console.error('❌ Error joining meeting:', error)
+      setConnectionError('Failed to start the video call.')
     } finally {
       setIsConnecting(false)
     }
@@ -772,11 +701,7 @@ export default function ZoomVideoCall({
 
   const leaveMeeting = async () => {
     try {
-      if (isConnectedRef.current) {
-        await sendSignal({ type: 'hangup' })
-      }
-    } catch (error) {
-      console.error('❌ Error sending hangup signal:', error)
+      if (isConnectedRef.current) await sendSignal({ type: 'hangup' })
     } finally {
       cleanupConnectionResources()
       setIsConnected(false)
@@ -793,11 +718,9 @@ export default function ZoomVideoCall({
 
   const toggleVideo = () => {
     if (!isConnectedRef.current) return
-
     const stream = isScreenSharing ? screenStreamRef.current : localStreamRef.current
     const videoTrack = stream?.getVideoTracks()[0]
     if (!videoTrack) return
-
     videoTrack.enabled = !videoTrack.enabled
     setIsVideoOn(videoTrack.enabled)
     addChatMessage('System', `Video ${videoTrack.enabled ? 'enabled' : 'disabled'}.`)
@@ -805,10 +728,8 @@ export default function ZoomVideoCall({
 
   const toggleAudio = () => {
     if (!isConnectedRef.current || !localStreamRef.current) return
-
     const audioTrack = localStreamRef.current.getAudioTracks()[0]
     if (!audioTrack) return
-
     audioTrack.enabled = !audioTrack.enabled
     setIsAudioOn(audioTrack.enabled)
     addChatMessage('System', `Audio ${audioTrack.enabled ? 'enabled' : 'disabled'}.`)
@@ -816,72 +737,51 @@ export default function ZoomVideoCall({
 
   const toggleScreenShare = async () => {
     if (!isConnectedRef.current) return
-
     try {
       if (isScreenSharing) {
         await stopScreenShare()
         return
       }
-
       const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true })
       const screenTrack = screenStream.getVideoTracks()[0]
-      if (!screenTrack) {
-        throw new Error('No screen track available.')
-      }
+      if (!screenTrack) throw new Error('No screen track available.')
 
       if (peerConnectionRef.current) {
         const sender = peerConnectionRef.current.getSenders().find(s => s.track?.kind === 'video')
-        if (sender) {
-          await sender.replaceTrack(screenTrack)
-        }
+        if (sender) await sender.replaceTrack(screenTrack)
       }
 
-      screenTrack.onended = () => {
-        void stopScreenShare()
-      }
-
+      screenTrack.onended = () => void stopScreenShare()
       screenStreamRef.current = screenStream
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = screenStream
-        localVideoRef.current.style.transform = 'none'
-        localVideoRef.current.style.webkitTransform = 'none'
-        void localVideoRef.current.play().catch(() => {
-          // Ignore autoplay errors.
-        })
+        void localVideoRef.current.play().catch(() => {})
       }
-
       setIsScreenSharing(true)
       setIsVideoOn(true)
       addChatMessage('System', 'Screen sharing started.')
     } catch (error) {
       console.error('❌ Error toggling screen share:', error)
-      addChatMessage('System', 'Unable to start screen sharing.')
     }
   }
 
   const sendChatMessage = async () => {
     if (!newMessage.trim()) return
-
-    const messageToSend = newMessage.trim()
     const senderName = participantNameRef.current.trim() || getDefaultParticipantName()
-
-    addChatMessage(senderName, messageToSend)
+    addChatMessage(senderName, newMessage.trim())
     setNewMessage('')
-
-    const channel = signalingChannelRef.current
-    const userId = currentUserIdRef.current
-    if (!channel || !userId) return
-
-    await channel.send({
-      type: 'broadcast',
-      event: 'chat',
-      payload: {
-        fromUserId: userId,
-        senderName,
-        message: messageToSend,
-        timestamp: new Date().toISOString()
-      }
-    })
+    if (signalingChannelRef.current && currentUserIdRef.current) {
+      await signalingChannelRef.current.send({
+        type: 'broadcast',
+        event: 'chat',
+        payload: {
+          fromUserId: currentUserIdRef.current,
+          senderName,
+          message: newMessage.trim(),
+          timestamp: new Date().toISOString()
+        }
+      })
+    }
   }
 
   const handleChatKeyPress = (e: React.KeyboardEvent) => {
@@ -893,48 +793,28 @@ export default function ZoomVideoCall({
 
   const copyMeetingId = async () => {
     if (!meetingId) return
-
     try {
       await navigator.clipboard.writeText(meetingId)
       setCopiedMeetingId(true)
       setTimeout(() => setCopiedMeetingId(false), 1500)
-    } catch (error) {
-      console.error('❌ Failed to copy meeting ID:', error)
-    }
+    } catch (error) {}
   }
 
   useEffect(() => {
     if (!isOpen || !consultation?.id) return
-
-    if (!participantNameRef.current) {
-      setParticipantName(getDefaultParticipantName())
-    }
-
     void loadMeetingDetailsRef.current()
-
     const supabase = createClient()
     const meetingSubscription = supabase
       .channel(`consultation-meeting-${consultation.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'consultation_meetings',
-          filter: `appointment_id=eq.${consultation.id}`
-        },
-        () => {
-          void loadMeetingDetailsRef.current()
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'consultation_meetings', filter: `appointment_id=eq.${consultation.id}` }, () => {
+        void loadMeetingDetailsRef.current()
+      })
       .subscribe()
 
     let pollingInterval: ReturnType<typeof setInterval> | null = null
     if (userRole === 'patient') {
       pollingInterval = setInterval(() => {
-        if (!meetingDetailsRef.current && isOpen) {
-          void loadMeetingDetailsRef.current()
-        }
+        if (!meetingDetailsRef.current && isOpen) void loadMeetingDetailsRef.current()
       }, 5000)
     }
 
@@ -946,7 +826,6 @@ export default function ZoomVideoCall({
 
   useEffect(() => {
     if (!isOpen || !consultation?.id) return
-
     const supabase = createClient()
     const signalingChannel = supabase
       .channel(`consultation-signal-${consultation.id}`)
@@ -957,16 +836,14 @@ export default function ZoomVideoCall({
         handleIncomingChatRef.current(payload as ChatBroadcastPayload)
       })
       .subscribe(status => {
-        if (status === 'SUBSCRIBED') {
-          setIsChannelReady(true)
-        } else if (status === 'CHANNEL_ERROR') {
+        if (status === 'SUBSCRIBED') setIsChannelReady(true)
+        else if (status === 'CHANNEL_ERROR') {
           setIsChannelReady(false)
-          setConnectionError('Unable to connect signaling channel.')
+          setConnectionError('Signaling channel unavailable.')
         }
       })
 
     signalingChannelRef.current = signalingChannel
-
     return () => {
       setIsChannelReady(false)
       signalingChannel.unsubscribe()
@@ -985,34 +862,22 @@ export default function ZoomVideoCall({
     }
   }, [isOpen])
 
-  useEffect(() => {
-    return () => {
-      cleanupConnectionResources()
-      if (signalingChannelRef.current) {
-        signalingChannelRef.current.unsubscribe()
-      }
-    }
-  }, [])
-
   if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-6xl h-[90vh] flex flex-col">
-        <CardHeader className="flex-shrink-0">
+      <Card className="w-full max-w-6xl h-[90vh] flex flex-col shadow-2xl border-none">
+        <CardHeader className="flex-shrink-0 border-b">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <CardTitle className="text-xl">Video Consultation</CardTitle>
+              <CardTitle className="text-xl font-bold uppercase tracking-tight">MedSync Secure Meet</CardTitle>
               <div className="flex items-center space-x-2">
-                <Badge variant={isConnected ? 'default' : 'secondary'}>
-                  {isConnected ? 'Connected' : 'Disconnected'}
-                </Badge>
-                <Badge variant={isChannelReady ? 'default' : 'secondary'}>
-                  {isChannelReady ? 'Signaling Ready' : 'Connecting Channel'}
+                <Badge variant={isConnected ? 'default' : 'secondary'} className={isConnected ? 'bg-green-600' : ''}>
+                  {isConnected ? 'ENCRYPTED' : 'OFFLINE'}
                 </Badge>
                 {meetingDetails && (
-                  <Badge variant="outline" className="text-green-600 border-green-600">
-                    {isHost ? 'Host' : 'Participant'}
+                  <Badge variant="outline" className="text-blue-600 border-blue-600">
+                    {isHost ? 'PROVIDER' : 'PATIENT'}
                   </Badge>
                 )}
               </div>
@@ -1022,14 +887,10 @@ export default function ZoomVideoCall({
             </Button>
           </div>
 
-          <div className="flex items-center space-x-4 text-sm text-muted-foreground">
+          <div className="flex items-center space-x-4 text-[10px] font-mono uppercase tracking-widest text-muted-foreground mt-2">
             <div className="flex items-center space-x-1">
               <Calendar className="h-3 w-3" />
-              <span>
-                {consultation?.appointment_date
-                  ? format(new Date(consultation.appointment_date), 'PPP')
-                  : 'Date TBA'}
-              </span>
+              <span>{consultation?.appointment_date ? format(new Date(consultation.appointment_date), 'PPP') : 'DATE TBA'}</span>
             </div>
             <div className="flex items-center space-x-1">
               <Clock className="h-3 w-3" />
@@ -1042,279 +903,145 @@ export default function ZoomVideoCall({
           </div>
         </CardHeader>
 
-        <CardContent className="flex-1 flex flex-col space-y-4 overflow-hidden">
+        <CardContent className="flex-1 flex flex-col space-y-4 overflow-hidden p-6 bg-slate-50/30">
           {connectionError && !isConnected && (
-            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
-              <p className="text-destructive text-sm mb-2">{connectionError}</p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setConnectionError(null)
-                  void joinOrStartMeeting()
-                }}
-              >
-                Retry
-              </Button>
-            </div>
-          )}
-
-          {isLoadingMeeting && (
-            <div className="flex items-center justify-center h-40">
-              <div className="text-center space-y-3">
-                <Loader2 className="h-8 w-8 animate-spin mx-auto" />
-                <p className="text-sm text-muted-foreground">Loading meeting details...</p>
-              </div>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-red-700 text-xs font-mono mb-2 uppercase">{connectionError}</p>
+              <Button variant="outline" size="sm" className="rounded-none border-red-200" onClick={() => { setConnectionError(null); void joinOrStartMeeting(); }}>RETRY LINK</Button>
             </div>
           )}
 
           {!isConnected && !isConnecting && !isLoadingMeeting && (
-            <div className="space-y-4">
+            <div className="max-w-md mx-auto w-full space-y-6 pt-12">
               {meetingDetails ? (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <div className="flex items-center space-x-2 mb-3">
-                    <div className="text-green-600">✅</div>
-                    <h3 className="font-medium text-green-900">Meeting Available</h3>
+                <div className="bg-white border border-black/10 p-8 space-y-6">
+                  <div className="space-y-1">
+                    <h3 className="font-bold uppercase tracking-tight">Access Secure Link</h3>
+                    <p className="text-xs text-muted-foreground font-mono">ENCRYPTION: AES-256</p>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="text-sm font-medium">Meeting ID</label>
-                      <div className="flex items-center space-x-2">
-                        <Input value={meetingId} readOnly className="font-mono" />
-                        <Button variant="outline" size="sm" onClick={() => void copyMeetingId()}>
-                          {copiedMeetingId ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                        </Button>
-                      </div>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Identity Check</label>
+                      <Input value={participantName} onChange={e => setParticipantName(e.target.value)} placeholder="ENTER YOUR FULL NAME" className="rounded-none border-black/10 focus:border-black" />
                     </div>
-                    <div>
-                      <label className="text-sm font-medium">Password</label>
-                      <Input value={password} readOnly className="font-mono" />
-                    </div>
-                  </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Your Name</label>
-                    <Input
-                      value={participantName}
-                      onChange={e => setParticipantName(e.target.value)}
-                      placeholder="Enter your name"
-                    />
+                    <Button onClick={() => void joinOrStartMeeting()} className="w-full bg-black hover:bg-black/90 text-white rounded-none h-12 uppercase font-mono text-[10px] tracking-widest" disabled={!participantName.trim() || !isChannelReady}>
+                      Establish Secure Uplink →
+                    </Button>
                   </div>
-
-                  <Button
-                    onClick={() => void joinOrStartMeeting()}
-                    className="w-full mt-4"
-                    disabled={!participantName.trim() || !isChannelReady}
-                  >
-                    <Video className="h-4 w-4 mr-2" />
-                    Join Video Call
-                  </Button>
                 </div>
               ) : userRole === 'doctor' ? (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <div className="text-blue-600">👨‍⚕️</div>
-                    <h3 className="font-medium text-blue-900">Start Consultation</h3>
-                  </div>
-                  <p className="text-blue-700 text-sm mb-3">
-                    Starting the call will create a shared meeting that the patient can join.
-                  </p>
-
-                  <div className="space-y-2 mb-4">
-                    <label className="text-sm font-medium">Your Name</label>
-                    <Input
-                      value={participantName}
-                      onChange={e => setParticipantName(e.target.value)}
-                      placeholder="Dr. Your Name"
-                    />
+                <div className="bg-white border border-black/10 p-8 space-y-6">
+                  <div className="space-y-1">
+                    <h3 className="font-bold uppercase tracking-tight">Initialize Encounter</h3>
+                    <p className="text-xs text-muted-foreground font-mono">NODE: PROVIDER_PRIMARY</p>
                   </div>
 
-                  <Button
-                    onClick={() => void joinOrStartMeeting()}
-                    className="w-full"
-                    disabled={!participantName.trim() || !isChannelReady}
-                  >
-                    <Video className="h-4 w-4 mr-2" />
-                    Start Consultation
-                  </Button>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Identity Check</label>
+                      <Input value={participantName} onChange={e => setParticipantName(e.target.value)} placeholder="DR. NAME" className="rounded-none border-black/10 focus:border-black" />
+                    </div>
+
+                    <Button onClick={() => void joinOrStartMeeting()} className="w-full bg-black hover:bg-black/90 text-white rounded-none h-12 uppercase font-mono text-[10px] tracking-widest" disabled={!participantName.trim() || !isChannelReady}>
+                      Create Secure Node →
+                    </Button>
+                  </div>
                 </div>
               ) : (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <div className="text-yellow-600">⏳</div>
-                    <h3 className="font-medium text-yellow-900">Waiting for Doctor</h3>
+                <div className="bg-white border border-black/10 p-12 text-center space-y-6">
+                  <Loader2 className="h-8 w-8 animate-spin mx-auto text-black/20" />
+                  <div className="space-y-2">
+                    <h3 className="font-bold uppercase tracking-tight">Waiting for Provider</h3>
+                    <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest leading-relaxed">
+                      The clinical node has not been initialized. <br/> Please standby for connection.
+                    </p>
                   </div>
-                  <p className="text-yellow-700 text-sm mb-4">
-                    The doctor must start the consultation first. Use refresh to check again.
-                  </p>
-                  <div className="space-y-2 mb-4">
-                    <label className="text-sm font-medium">Your Name</label>
-                    <Input
-                      value={participantName}
-                      onChange={e => setParticipantName(e.target.value)}
-                      placeholder="Your Name"
-                    />
-                  </div>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => void loadMeetingDetailsRef.current()}
-                  >
-                    Refresh Meeting Status
-                  </Button>
+                  <Button variant="outline" className="rounded-none border-black/10 font-mono text-[10px] tracking-widest uppercase px-8" onClick={() => void loadMeetingDetailsRef.current()}>Refresh Status</Button>
                 </div>
               )}
             </div>
           )}
 
           {isConnecting && (
-            <div className="flex items-center justify-center h-64">
-              <div className="text-center space-y-4">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-                <p className="text-muted-foreground">Connecting to meeting...</p>
-              </div>
+            <div className="flex flex-col items-center justify-center h-64 space-y-6">
+              <Loader2 className="h-12 w-12 animate-spin text-black/20" />
+              <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">Establishing Peer-to-Peer Tunnel...</p>
             </div>
           )}
 
           {isConnected && (
             <div className="flex-1 min-h-0 relative">
-              {connectionError && (
-                <div className="absolute left-4 right-4 top-4 z-30 bg-destructive/90 text-white rounded-md px-3 py-2 text-sm shadow-lg">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="truncate">{connectionError}</span>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => {
-                          setConnectionError(null)
-                          void joinOrStartMeeting()
-                        }}
-                      >
-                        Retry
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setConnectionError(null)}>
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div className="relative bg-black rounded-lg overflow-hidden h-full min-h-0">
-                <video
-                  ref={remoteVideoRef}
-                  autoPlay
-                  playsInline
-                  className={`w-full h-full object-cover ${hasRemoteStream ? '' : 'hidden'}`}
-                />
+              <div className="relative bg-black rounded-none overflow-hidden h-full min-h-0">
+                <video ref={remoteVideoRef} autoPlay playsInline className={`w-full h-full object-cover ${hasRemoteStream ? '' : 'hidden'}`} />
 
                 {!hasRemoteStream && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
-                    <div className="text-center text-white">
-                      <div className="text-5xl mb-4">👥</div>
-                      <h3 className="text-lg font-semibold mb-2">Waiting for other participant</h3>
-                      <p className="text-gray-300 text-sm">Your camera and mic are active.</p>
+                  <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
+                    <div className="text-center">
+                      <Users className="h-12 w-12 text-white/10 mx-auto mb-4" />
+                      <h3 className="text-sm font-mono text-white/40 uppercase tracking-widest">Waiting for Remote Participant</h3>
                     </div>
                   </div>
                 )}
 
                 {(hasLocalStream || isScreenSharing) && (
-                  <div className="absolute top-4 right-4 w-48 h-36 bg-black rounded-lg overflow-hidden border-2 border-white">
-                    <video
-                      ref={localVideoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className={`w-full h-full object-cover ${isVideoOn ? '' : 'hidden'}`}
-                      style={{ transform: 'none', WebkitTransform: 'none' }}
-                    />
-
-                    {!isVideoOn && (
-                      <div className="w-full h-full flex items-center justify-center bg-gray-800 text-white text-sm">
-                        Camera Off
-                      </div>
-                    )}
-
-                    <div className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
-                      You
-                    </div>
+                  <div className="absolute top-4 right-4 w-48 h-36 bg-black rounded-none overflow-hidden border border-white/20 shadow-2xl">
+                    <video ref={localVideoRef} autoPlay playsInline muted className={`w-full h-full object-cover ${isVideoOn ? '' : 'hidden'}`} />
+                    {!isVideoOn && <div className="w-full h-full flex items-center justify-center bg-slate-800 text-[10px] font-mono text-white/40 uppercase tracking-widest">Feed Cut</div>}
+                    <div className="absolute bottom-2 left-2 bg-black/40 text-white text-[8px] font-mono uppercase px-1.5 py-0.5 tracking-tighter">LOCAL_FEED</div>
                   </div>
                 )}
 
-                <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
-                  <div className="flex items-center space-x-2 bg-black/50 rounded-full px-4 py-2">
-                    <Button variant={isAudioOn ? 'default' : 'destructive'} size="sm" onClick={toggleAudio}>
+                <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2">
+                  <div className="flex items-center space-x-4 bg-black/40 backdrop-blur-md rounded-none px-6 py-3 border border-white/10 shadow-2xl">
+                    <Button variant={isAudioOn ? 'secondary' : 'destructive'} size="icon" className="rounded-none h-10 w-10" onClick={toggleAudio}>
                       {isAudioOn ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
                     </Button>
-
-                    <Button variant={isVideoOn ? 'default' : 'destructive'} size="sm" onClick={toggleVideo}>
+                    <Button variant={isVideoOn ? 'secondary' : 'destructive'} size="icon" className="rounded-none h-10 w-10" onClick={toggleVideo}>
                       {isVideoOn ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
                     </Button>
-
-                    <Button variant={isScreenSharing ? 'default' : 'secondary'} size="sm" onClick={() => void toggleScreenShare()}>
+                    <Button variant={isScreenSharing ? 'default' : 'secondary'} size="icon" className="rounded-none h-10 w-10" onClick={() => void toggleScreenShare()}>
                       {isScreenSharing ? <MonitorOff className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
                     </Button>
-
-                    <Button variant="destructive" size="sm" onClick={() => void leaveMeeting()}>
+                    <div className="w-px h-6 bg-white/10 mx-2" />
+                    <Button variant="destructive" size="icon" className="rounded-none h-10 w-10" onClick={() => void leaveMeeting()}>
                       <PhoneOff className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
-
-                {!hasLocalStream && (
-                  <div className="absolute bottom-20 right-4 z-20 bg-black/60 text-white text-xs px-3 py-1.5 rounded-md">
-                    Joined without local AV
-                  </div>
-                )}
               </div>
 
               <div className="absolute top-4 left-4 z-20">
-                <Button
-                  variant={isChatOpen ? 'default' : 'secondary'}
-                  size="sm"
-                  onClick={() => setIsChatOpen(!isChatOpen)}
-                  className="shadow-md"
-                >
-                  <MessageSquare className="h-4 w-4 mr-2" />
-                  {isChatOpen ? 'Hide Chat' : 'Show Chat'}
+                <Button variant="secondary" size="sm" onClick={() => setIsChatOpen(!isChatOpen)} className="rounded-none font-mono text-[10px] tracking-widest uppercase h-8 shadow-xl">
+                  {isChatOpen ? 'Close Archive' : 'Open Secure Chat'}
                 </Button>
               </div>
 
               {isChatOpen && (
                 <div className="absolute right-4 top-16 bottom-4 z-20 w-80 max-w-[45vw]">
-                  <div className="h-full flex flex-col border rounded-lg bg-white/95 backdrop-blur-sm shadow-xl">
-                    <div className="flex items-center justify-between p-3 border-b">
-                      <h3 className="font-medium">Chat</h3>
-                      <Button variant="ghost" size="sm" onClick={() => setIsChatOpen(false)}>
-                        <X className="h-4 w-4" />
-                      </Button>
+                  <div className="h-full flex flex-col border border-black/10 bg-white/95 backdrop-blur-md shadow-2xl rounded-none">
+                    <div className="flex items-center justify-between p-4 border-b">
+                      <h3 className="text-xs font-bold uppercase tracking-tight">Secure Message Archive</h3>
+                      <Button variant="ghost" size="sm" onClick={() => setIsChatOpen(false)}><X className="h-4 w-4" /></Button>
                     </div>
 
-                    <div ref={chatContainerRef} className="flex-1 p-4 space-y-3 overflow-y-auto">
+                    <div ref={chatContainerRef} className="flex-1 p-6 space-y-6 overflow-y-auto">
                       {chatMessages.map(msg => (
-                        <div key={msg.id} className="space-y-1">
-                          <div className="flex items-center space-x-2">
-                            <span className="text-sm font-medium text-primary">{msg.sender}</span>
-                            <span className="text-xs text-muted-foreground">{format(msg.timestamp, 'HH:mm')}</span>
+                        <div key={msg.id} className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold uppercase tracking-tight text-blue-600">{msg.sender}</span>
+                            <span className="text-[8px] font-mono text-muted-foreground uppercase">{format(msg.timestamp, 'HH:mm:ss')}</span>
                           </div>
-                          <p className="text-sm bg-muted p-2 rounded-lg">{msg.message}</p>
+                          <p className="text-xs bg-slate-50 border border-black/[0.03] p-3 rounded-none leading-relaxed">{msg.message}</p>
                         </div>
                       ))}
                     </div>
 
-                    <div className="p-4 border-t">
-                      <div className="flex space-x-2">
-                        <Textarea
-                          value={newMessage}
-                          onChange={e => setNewMessage(e.target.value)}
-                          onKeyDown={handleChatKeyPress}
-                          placeholder="Type a message..."
-                          className="flex-1 min-h-[60px] resize-none"
-                        />
-                        <Button onClick={() => void sendChatMessage()} disabled={!newMessage.trim()} size="sm">
-                          <Send className="h-4 w-4" />
-                        </Button>
+                    <div className="p-4 border-t bg-slate-50/50">
+                      <div className="flex gap-2">
+                        <Textarea value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={handleChatKeyPress} placeholder="ENCRYPTED MESSAGE..." className="rounded-none border-black/10 focus:border-black min-h-[60px] text-xs resize-none font-mono uppercase" />
+                        <Button onClick={() => void sendChatMessage()} disabled={!newMessage.trim()} className="bg-black text-white rounded-none h-full px-4"><Send className="h-4 w-4" /></Button>
                       </div>
                     </div>
                   </div>
@@ -1324,18 +1051,13 @@ export default function ZoomVideoCall({
           )}
 
           {isConnected && (
-            <div className="bg-muted/50 rounded-lg p-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                <div>
-                  <span className="font-medium">Meeting ID:</span> {meetingId}
-                </div>
-                <div>
-                  <span className="font-medium">Password:</span> {password}
-                </div>
-                <div>
-                  <span className="font-medium">Role:</span> {isHost ? 'Host' : 'Participant'}
-                </div>
+            <div className="bg-black text-white p-4 font-mono text-[9px] uppercase tracking-[0.2em] flex justify-between items-center">
+              <div className="flex gap-6">
+                <span>NODE_ID: {meetingId}</span>
+                <span>CIPHER: AES_GCM_256</span>
+                <span>STATUS: STABLE</span>
               </div>
+              <div className="text-white/40">MEDSYNC SECURE ENCOUNTER PROTOCOL V1.0</div>
             </div>
           )}
         </CardContent>
