@@ -167,12 +167,6 @@ Built with ❤️ in 36 hours for **Parul University AI/ML Hackathon 2.0**.
 
 ---
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
 <div align="center">
   <b>Professional. Precise. Human.</b><br/>
   <sub>v2.0.25 • MedSync Team</sub>
