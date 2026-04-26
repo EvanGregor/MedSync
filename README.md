@@ -118,7 +118,7 @@ The MedSync ML Service is a high-performance FastAPI application designed for me
 
 1. **Clone & Install Frontend:**
    ```bash
-   git clone https://github.com/yourusername/medsync.git
+   git clone https://github.com/EvanGregor/MedSync.git
    cd medsync
    npm install
    ```
@@ -147,19 +147,9 @@ The MedSync ML Service is a high-performance FastAPI application designed for me
 
 ---
 
-## 🎭 Demo Access
-
-| Role | Email | Password |
-| :--- | :--- | :--- |
-| **Patient** | `patient@medsync.demo` | `password123` |
-| **Doctor** | `doctor@medsync.demo` | `password123` |
-| **Lab Technician** | `lab@medsync.demo` | `password123` |
-
----
-
 ## 🏆 Hackathon Credits
 
-Built with ❤️ in 36 hours for **Parul University AI/ML Hackathon 2.0**.
+Built in 36 hours for **Parul University AI/ML Hackathon 2.0**.
 
 - **Infra**: Supabase, Vercel
 - **AI**: Google Gemini, Vertex AI
