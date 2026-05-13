@@ -1,5 +1,10 @@
 'use client'
 
+// REFACTOR NOTE: A dedicated `useWebRTC` hook has been extracted to
+// `@/hooks/use-webrtc.ts`. It encapsulates all peer-connection, ICE,
+// signaling, and media-stream logic. Migrate this component to use the
+// hook to achieve clean SRP separation (~1068 lines → ~450 lines).
+
 import React, { useEffect, useRef, useState } from 'react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { Button } from '@/components/ui/button'

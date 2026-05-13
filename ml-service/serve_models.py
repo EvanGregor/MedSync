@@ -231,7 +231,16 @@ except Exception as exc:
 async def analyze(request: Request, scan_type: str = Form(...), file: UploadFile = File(...)):
     """Analyze medical images using appropriate ML models"""
     internal_secret = request.headers.get("X-Internal-Secret")
-    expected_secret = os.getenv("INTERNAL_API_KEY", "default-secret-key")
+    expected_secret = os.getenv("INTERNAL_API_KEY")
+
+    if not expected_secret:
+        return {
+            "error": "Server misconfiguration",
+            "severity": "critical",
+            "findings": "INTERNAL_API_KEY is not configured on the ML service.",
+            "confidence": 0.0,
+            "recommendations": "Set the INTERNAL_API_KEY environment variable.",
+        }
 
     if internal_secret != expected_secret:
         return {

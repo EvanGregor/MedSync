@@ -1,50 +1,66 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
+import { Ratelimit } from "@upstash/ratelimit"
+import { Redis } from "@upstash/redis"
 
-// IMPORTANT: In-memory rate limiting only works on a single instance.
-// For production Vercel deployment (Serverless), please use Upstash/Redis.
-// Example: const redis = new Redis({ ... });
-const rateLimitMap = new Map();
+// ---------- Rate Limiting ----------
+// Uses Upstash Redis so state survives serverless cold-starts on Vercel.
+// Fallback: if UPSTASH env vars are missing, rate limiting is silently skipped
+// so local development still works without Redis.
+let authLimiter: Ratelimit | null = null
+let apiLimiter: Ratelimit | null = null
 
-const rateLimit = (ip: string, limit: number, windowMs: number) => {
-  const now = Date.now();
-  const windowStart = now - windowMs;
+if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+  const redis = new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN,
+  })
 
-  const requestTimestamps = rateLimitMap.get(ip) || [];
-  const requestsInWindow = requestTimestamps.filter((timestamp: number) => timestamp > windowStart);
+  // 20 requests per 60-second sliding window for auth routes
+  authLimiter = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(20, "60 s"),
+    analytics: true,
+    prefix: "ratelimit:auth",
+  })
 
-  if (requestsInWindow.length >= limit) {
-    return false;
-  }
-
-  requestsInWindow.push(now);
-  rateLimitMap.set(ip, requestsInWindow);
-  return true;
-};
+  // 60 requests per 60-second sliding window for API routes
+  apiLimiter = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(60, "60 s"),
+    analytics: true,
+    prefix: "ratelimit:api",
+  })
+}
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   })
 
-  // 1. Rate Limiting
-  // 1. Rate Limiting
-  const ip = (request as any).ip || request.headers.get('x-forwarded-for') || '127.0.0.1';
-  const pathname = request.nextUrl.pathname;
+  // 1. Rate Limiting (Upstash Redis – production-safe)
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1'
+  const pathname = request.nextUrl.pathname
 
-  // Stricter limit for auth/public routes (20 req/min)
+  // Stricter limit for auth/public routes
   if (pathname === '/login' || pathname === '/signup') {
-    if (!rateLimit(`${ip}:auth`, 20, 60 * 1000)) {
-      return new NextResponse('Too Many Requests', { status: 429 });
+    if (authLimiter) {
+      const { success } = await authLimiter.limit(ip)
+      if (!success) {
+        return new NextResponse('Too Many Requests', { status: 429 })
+      }
     }
   }
-  // Standard limit for API routes (60 req/min)
+  // Standard limit for API routes
   else if (pathname.startsWith('/api')) {
-    if (!rateLimit(`${ip}:api`, 60, 60 * 1000)) {
-      return new NextResponse(JSON.stringify({ error: 'Too many requests' }), {
-        status: 429,
-        headers: { 'Content-Type': 'application/json' }
-      });
+    if (apiLimiter) {
+      const { success } = await apiLimiter.limit(ip)
+      if (!success) {
+        return new NextResponse(JSON.stringify({ error: 'Too many requests' }), {
+          status: 429,
+          headers: { 'Content-Type': 'application/json' }
+        })
+      }
     }
   }
 

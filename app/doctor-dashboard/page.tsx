@@ -16,6 +16,7 @@ import Link from "next/link"
 import { format, parseISO } from "date-fns"
 import Sidebar from "@/components/medical/navigation/Sidebar"
 import { useAuthCheck } from "@/hooks/use-auth-check"
+import ErrorBoundary from "@/components/error-boundary"
 
 interface UrgentReview {
   id: string
@@ -159,10 +160,32 @@ export default function DoctorDashboard() {
       
       setUrgentReviews(reviews)
 
-      // Mock AI insights for now but without random
-      setAiInsights([
-        { id: '1', type: 'pattern', title: 'Pattern Recognition', description: 'Similar cases suggest early intervention could improve outcomes', created_at: today, priority: 'high' }
-      ])
+      // Fetch real AI insights from ml_suggestions table
+      try {
+        const { data: suggestions } = await supabase
+          .from('ml_suggestions')
+          .select('id, test_type, findings, confidence, severity, processed_at')
+          .eq('status', 'pending_review')
+          .order('processed_at', { ascending: false })
+          .limit(5)
+
+        if (suggestions && suggestions.length > 0) {
+          setAiInsights(suggestions.map((s: any) => ({
+            id: s.id,
+            type: s.test_type || 'analysis',
+            title: `${(s.test_type || 'scan').toUpperCase()} Analysis — ${Math.round((s.confidence || 0) * 100)}% confidence`,
+            description: s.findings || 'Analysis complete. Review recommended.',
+            created_at: s.processed_at || today,
+            priority: s.severity === 'critical' || s.severity === 'severe' ? 'high' : 'normal',
+          })))
+          setStats(prev => ({ ...prev, aiInsights: suggestions.length }))
+        } else {
+          setAiInsights([])
+        }
+      } catch (insightErr) {
+        console.warn('Could not fetch AI insights:', insightErr)
+        setAiInsights([])
+      }
 
     } catch (error) {
       console.error('Error loading dashboard data:', error)
@@ -193,6 +216,7 @@ export default function DoctorDashboard() {
   const greeting = new Date().getHours() < 12 ? 'Good Morning' : new Date().getHours() < 18 ? 'Good Afternoon' : 'Good Evening'
 
   return (
+    <ErrorBoundary componentName="Doctor Dashboard">
     <div className="min-h-screen bg-transparent flex">
       <Sidebar userRole="doctor" userName={user?.user_metadata?.name} onLogout={handleLogout} />
 
@@ -595,5 +619,6 @@ export default function DoctorDashboard() {
       </Dialog>
 
     </div>
+    </ErrorBoundary>
   )
 }

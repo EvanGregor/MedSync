@@ -10,6 +10,7 @@ import { format, parseISO } from "date-fns"
 import Sidebar from "@/components/medical/navigation/Sidebar"
 import StatusBadge from "@/components/medical/common/StatusBadge"
 import { useAuthCheck } from "@/hooks/use-auth-check"
+import ErrorBoundary from "@/components/error-boundary"
 
 interface PatientActivity {
   id: string
@@ -164,6 +165,7 @@ export default function PatientDashboard() {
   }
 
   return (
+    <ErrorBoundary componentName="Patient Dashboard">
     <div className="min-h-screen bg-transparent flex">
       <Sidebar userRole="patient" userName={user?.user_metadata?.name} onLogout={handleLogout} />
 
@@ -366,5 +368,6 @@ export default function PatientDashboard() {
         </div>
       </div>
     </div>
+    </ErrorBoundary>
   )
 }

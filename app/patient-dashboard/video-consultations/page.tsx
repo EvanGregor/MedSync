@@ -7,7 +7,19 @@ import { createClient } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { format, parseISO } from "date-fns"
-import MedicalVideoCall from "@/components/medical-video-call"
+import dynamic from "next/dynamic"
+
+const MedicalVideoCall = dynamic(() => import("@/components/medical-video-call"), {
+  ssr: false,
+  loading: () => (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white p-8 text-center">
+        <Activity className="h-8 w-8 animate-spin mx-auto mb-4 text-black" />
+        <span className="text-xs font-mono uppercase tracking-widest text-black/60">Loading Video Module...</span>
+      </div>
+    </div>
+  ),
+})
 
 interface Consultation {
   id: string

@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Sidebar from "@/components/medical/navigation/Sidebar"
 import StatusBadge from "@/components/medical/common/StatusBadge"
+import ErrorBoundary from "@/components/error-boundary"
 
 export default function LabDashboard() {
   const [user, setUser] = useState<any>(null)
@@ -70,6 +71,7 @@ export default function LabDashboard() {
   }
 
   return (
+    <ErrorBoundary componentName="Lab Dashboard">
     <div className="min-h-screen bg-transparent flex">
       <Sidebar userRole="lab" userName={user?.user_metadata?.name} onLogout={handleLogout} />
 
@@ -242,5 +244,6 @@ export default function LabDashboard() {
         </div>
       </div>
     </div>
+    </ErrorBoundary>
   )
 }

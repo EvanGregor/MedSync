@@ -41,6 +41,8 @@
     "@radix-ui/react-tooltip": "latest",
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.0",
     "autoprefixer": "^10.4.20",
     "axios": "^1.11.0",
     "class-variance-authority": "^0.7.1",

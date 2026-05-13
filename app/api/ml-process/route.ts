@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { writeFile } from 'fs/promises'
-import { join } from 'path'
-import { tmpdir } from 'os'
 import path from 'path'
 import axios from 'axios'
 import FormData from 'form-data'
@@ -17,9 +14,10 @@ export async function POST(request: NextRequest) {
     if (!user) {
       return unauthorizedResponse()
     }
+
     // Validate environment variables first
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-      console.error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable')
+      console.error('[ml-process] Missing NEXT_PUBLIC_SUPABASE_URL')
       return NextResponse.json(
         { error: 'Server configuration error: Missing Supabase URL' },
         { status: 500 }
@@ -27,9 +25,18 @@ export async function POST(request: NextRequest) {
     }
 
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      console.error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable')
+      console.error('[ml-process] Missing SUPABASE_SERVICE_ROLE_KEY')
       return NextResponse.json(
         { error: 'Server configuration error: Missing service role key' },
+        { status: 500 }
+      )
+    }
+
+    // SECURITY: Require INTERNAL_API_KEY — never fall back to a default secret
+    if (!process.env.INTERNAL_API_KEY) {
+      console.error('[ml-process] INTERNAL_API_KEY is not configured. Refusing to call ML service.')
+      return NextResponse.json(
+        { error: 'Server configuration error: Internal API key not set' },
         { status: 500 }
       )
     }
@@ -40,7 +47,7 @@ export async function POST(request: NextRequest) {
     const validation = analysisRequestSchema.safeParse(body)
 
     if (!validation.success) {
-      console.error('Validation Error:', validation.error.format())
+      console.error('[ml-process] Validation Error:', validation.error.format())
       return NextResponse.json(
         { error: 'Invalid input data', details: validation.error.format() },
         { status: 400 }
@@ -48,11 +55,6 @@ export async function POST(request: NextRequest) {
     }
 
     const { fileName, originalName, patientId, doctorId, testType, reportId } = validation.data
-
-    console.log('Environment check passed, creating Supabase client...')
-    console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
-    console.log('Service role key exists:', !!process.env.SUPABASE_SERVICE_ROLE_KEY)
-    console.log('Internal API Key configured:', !!process.env.INTERNAL_API_KEY)
 
     // Create service role client for server-side operations
     const supabase = createClient(
@@ -66,36 +68,22 @@ export async function POST(request: NextRequest) {
       }
     )
 
-    console.log('Supabase client created successfully')
-    console.log('Attempting to download file:', fileName)
-
     // Download file from Supabase Storage using service role
     const { data: fileData, error: downloadError } = await supabase.storage
       .from('reports')
       .download(fileName)
 
     if (downloadError || !fileData) {
-      console.error('Storage download error:', downloadError)
+      console.error('[ml-process] Storage download error:', downloadError?.message)
       return NextResponse.json(
         { error: 'Failed to download file', details: downloadError?.message },
         { status: 500 }
       )
     }
 
-    console.log('File downloaded successfully, size:', fileData.size)
-
-    // Convert file to buffer
+    // PERFORMANCE: Stream the buffer directly to FastAPI — no temp file on disk
     const arrayBuffer = await fileData.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
-
-    // Create unique filename for temp processing
-    const fileExtension = path.extname(originalName)
-    const tempFileName = `ml_process_${Date.now()}${fileExtension}`
-    const tempFilePath = join(tmpdir(), tempFileName)
-
-    // Write file to temp directory
-    await writeFile(tempFilePath, buffer)
-    console.log('File written to temp directory:', tempFilePath)
 
     // Call FastAPI for ML analysis
     let prediction
@@ -104,20 +92,15 @@ export async function POST(request: NextRequest) {
       fastApiForm.append('scan_type', testType === 'x_ray' ? 'xray' : testType === 'mri' ? 'mri' : testType);
       fastApiForm.append('file', buffer, originalName);
 
-      console.log(`Sending ${testType} image to ML service...`)
-
-      const internalKey = process.env.INTERNAL_API_KEY || 'default-secret-key';
-
       const response = await axios.post('http://localhost:8000/analyze', fastApiForm, {
         headers: {
           ...fastApiForm.getHeaders(),
-          'X-Internal-Secret': internalKey
+          'X-Internal-Secret': process.env.INTERNAL_API_KEY
         },
         timeout: 30000, // 30 second timeout
       });
 
       prediction = response.data;
-      console.log('ML analysis result:', prediction)
 
       // Ensure all required fields are present
       if (!prediction.findings) prediction.findings = 'No specific findings detected.';
@@ -126,7 +109,7 @@ export async function POST(request: NextRequest) {
       if (!prediction.severity) prediction.severity = 'unknown';
 
     } catch (err: any) {
-      console.error('ML processing error:', err.message)
+      console.error('[ml-process] ML service error:', err.message)
       prediction = {
         findings: 'AI analysis unavailable. Please review manually.',
         confidence: 0.0,
@@ -140,10 +123,7 @@ export async function POST(request: NextRequest) {
     // Resolve doctorId
     let resolvedDoctorId = doctorId
 
-    console.log('🔍 Resolving IDs - Original doctorId:', doctorId, 'patientId:', patientId)
-
     if (doctorId && !UUID_REGEX.test(doctorId)) {
-      console.log('🔍 Resolving doctor Short ID:', doctorId)
       const { data: shortDoc, error: docErr } = await supabase
         .from('user_short_ids')
         .select('user_id')
@@ -151,21 +131,17 @@ export async function POST(request: NextRequest) {
         .maybeSingle()
 
       if (docErr) {
-        console.warn('⚠️ Doctor Short ID resolution error:', docErr)
+        console.warn('[ml-process] Doctor Short ID resolution error:', docErr.message)
       }
 
       if (shortDoc?.user_id) {
         resolvedDoctorId = shortDoc.user_id
-        console.log('✅ Doctor ID resolved to UUID:', resolvedDoctorId)
       } else {
-        console.warn('⚠️ Doctor Short ID not found:', doctorId)
+        console.warn('[ml-process] Doctor Short ID not found:', doctorId)
       }
-    } else if (doctorId && UUID_REGEX.test(doctorId)) {
-      console.log('✅ Doctor ID is already a valid UUID:', doctorId)
     }
 
     if (patientId && !UUID_REGEX.test(patientId)) {
-      console.log('🔍 Resolving patient Short ID:', patientId)
       const { data: shortMatch, error: shortErr } = await supabase
         .from('user_short_ids')
         .select('user_id')
@@ -173,24 +149,19 @@ export async function POST(request: NextRequest) {
         .maybeSingle()
 
       if (shortErr) {
-        console.warn('⚠️ Patient Short ID resolution error:', shortErr)
+        console.warn('[ml-process] Patient Short ID resolution error:', shortErr.message)
       }
 
       if (!shortErr && shortMatch?.user_id) {
         resolvedPatientId = shortMatch.user_id
-        console.log('✅ Patient ID resolved to UUID:', resolvedPatientId)
       } else {
-        console.warn('⚠️ Patient Short ID not found:', patientId)
+        console.warn('[ml-process] Patient Short ID not found:', patientId)
       }
-    } else if (patientId && UUID_REGEX.test(patientId)) {
-      console.log('✅ Patient ID is already a valid UUID:', patientId)
     }
-
-    console.log('🔍 Final resolved IDs - Doctor:', resolvedDoctorId, 'Patient:', resolvedPatientId)
 
     // Use the reportId passed from the frontend
     if (!reportId) {
-      console.error('No reportId provided for ML processing')
+      console.error('[ml-process] No reportId provided')
       return NextResponse.json(
         { error: 'Report ID is required for ML processing' },
         { status: 400 }
@@ -198,16 +169,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Update the existing report with ML results
-    // Use the resolved doctor ID (UUID) instead of the original input
-    console.log('📊 Updating report with ML results - Report ID:', reportId, 'Doctor ID:', resolvedDoctorId)
-
     const updateData = {
       result: prediction,
       updated_at: new Date().toISOString(),
-      doctor_id: resolvedDoctorId || null, // Use resolved UUID, not original input
+      doctor_id: resolvedDoctorId || null,
     }
-
-    console.log('📊 Update data:', JSON.stringify(updateData, null, 2))
 
     const { error: updateError } = await supabase
       .from('reports')
@@ -215,11 +181,10 @@ export async function POST(request: NextRequest) {
       .eq('id', reportId)
 
     if (updateError) {
-      console.error('Error updating report with ML results:', updateError)
+      console.error('[ml-process] Report update error:', updateError.message)
 
       // If it's a UUID format error, provide more specific guidance
       if (updateError.message.includes('invalid input syntax for type uuid')) {
-        console.error('UUID format error detected. Doctor ID:', resolvedDoctorId)
         return NextResponse.json(
           {
             error: 'Failed to update report with ML results',
@@ -254,7 +219,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (suggestionError) {
-      console.error('Error creating ML suggestion:', suggestionError)
+      console.error('[ml-process] ML suggestion insert error:', suggestionError.message)
       return NextResponse.json(
         { error: 'Failed to store ML suggestion', details: suggestionError.message },
         { status: 500 }
@@ -281,15 +246,8 @@ export async function POST(request: NextRequest) {
           }
         })
     } catch (notificationError) {
-      console.warn('Notification creation failed:', notificationError)
+      console.warn('[ml-process] Notification creation failed (non-fatal)')
       // Continue even if notification fails
-    }
-
-    // Clean up temp file
-    try {
-      await writeFile(tempFilePath, '') // Clear the file
-    } catch (cleanupError) {
-      console.warn('Temp file cleanup failed:', cleanupError)
     }
 
     return NextResponse.json({
@@ -300,10 +258,10 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error: any) {
-    console.error('ML processing error:', error)
+    console.error('[ml-process] Internal error:', error.message)
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }
     )
   }
-} 
+}
