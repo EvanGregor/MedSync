@@ -49,11 +49,11 @@ export default function RootLayout({
         <link rel="icon" href="/medi.png" />
         <link rel="apple-touch-icon" href="/medi.png" />
       </head>
-      <body className={inter.className} suppressHydrationWarning>
+      <body className={`${inter.className} antialiased`} suppressHydrationWarning>
         <ThemeProvider
           attribute="class"
           defaultTheme="light"
-          enableSystem
+          forcedTheme="light"
           disableTransitionOnChange
         >
           {children}

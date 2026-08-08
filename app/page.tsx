@@ -8,7 +8,7 @@ import FeatureCard from "@/components/landing/FeatureCard"
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white text-black">
       {/* Header - Ultra Minimal */}
       <header className="border-b border-black/10 sticky top-0 z-50 bg-white/80 backdrop-blur-md">
         <div className="container mx-auto px-6 lg:px-12 py-6 flex items-center justify-between">
