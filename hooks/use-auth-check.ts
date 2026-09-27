@@ -20,18 +20,19 @@ export function useAuthCheck(requiredRole?: UserRole) {
   const [error, setError] = useState<any>(null)
   const router = useRouter()
   const pathname = usePathname()
-  const loadingRef = useRef(false)
-
   useEffect(() => {
+    let isMounted = true
+    
     const checkAuth = async () => {
-      if (loadingRef.current) return
-      loadingRef.current = true
+      if (!isMounted) return
       setLoading(true)
 
       try {
         const supabase = createClient()
         const { data: { session }, error: authError } = await supabase.auth.getSession()
         const user = session?.user || null
+
+        if (!isMounted) return
 
         if (authError || !user) {
           console.error("useAuthCheck: getUser failed!", authError)
@@ -58,6 +59,8 @@ export function useAuthCheck(requiredRole?: UserRole) {
             .eq('id', user.id)
             .maybeSingle()
 
+          if (!isMounted) return
+
           if (profileError) {
             console.warn("Could not resolve short ID:", profileError)
           } else {
@@ -68,15 +71,21 @@ export function useAuthCheck(requiredRole?: UserRole) {
         }
 
       } catch (e) {
+        if (!isMounted) return
         console.error('Auth check error:', e)
         setError(e)
       } finally {
-        setLoading(false)
-        loadingRef.current = false
+        if (isMounted) {
+          setLoading(false)
+        }
       }
     }
 
     checkAuth()
+    
+    return () => {
+      isMounted = false
+    }
   }, [requiredRole, router])
 
   return { user, shortId, loading, error }

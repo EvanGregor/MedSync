@@ -11,6 +11,7 @@ import { Calendar, Clock, User, Video, Phone, MessageSquare, Loader2, Search, Ch
 import { createClient } from "@/lib/supabase"
 import { format, addDays } from "date-fns"
 import { UUID_REGEX } from "@/lib/constants"
+import { useToast } from "@/hooks/use-toast"
 
 interface ScheduleAppointmentModalProps {
     isOpen: boolean
@@ -36,6 +37,7 @@ export default function ScheduleAppointmentModal({
     const [loading, setLoading] = useState(false)
     const [patients, setPatients] = useState<Patient[]>([])
     const [loadingPatients, setLoadingPatients] = useState(false)
+    const { toast } = useToast()
 
     // Form state
     const [patientId, setPatientId] = useState("")
@@ -213,8 +215,10 @@ export default function ScheduleAppointmentModal({
 
             console.log('Appointment created successfully:', data)
             
-            // Use window.alert as a simple feedback mechanism if no toast system is available
-            alert("Appointment scheduled successfully!")
+            toast({
+                title: "Appointment scheduled",
+                description: "The appointment has been successfully scheduled.",
+            })
 
             if (onSuccess) {
                 onSuccess()

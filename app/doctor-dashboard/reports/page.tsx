@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import FilePreview from "@/components/file-preview"
+import { useToast } from "@/hooks/use-toast"
 
 interface Report {
   id: string
@@ -35,6 +36,7 @@ export default function DoctorPatientManagementPage() {
   const [selectedReport, setSelectedReport] = useState<Report | null>(null)
   const [showReportModal, setShowReportModal] = useState(false)
   const router = useRouter()
+  const { toast } = useToast()
 
   useEffect(() => {
     const checkUser = async () => {
@@ -233,7 +235,10 @@ export default function DoctorPatientManagementPage() {
         'rejected': 'Analysis rejected'
       }
       
-      alert(statusMessages[status as keyof typeof statusMessages] || 'Status updated successfully')
+      toast({
+        title: "Status updated",
+        description: statusMessages[status as keyof typeof statusMessages] || 'Status updated successfully',
+      })
       return
     }
 
@@ -263,7 +268,11 @@ export default function DoctorPatientManagementPage() {
           suggestionId
         }
         console.error('Error updating ML suggestion:', errorDetails)
-        alert('Failed to update status. Please try again.')
+        toast({
+          title: "Update failed",
+          description: "Failed to update status. Please try again.",
+          variant: "destructive",
+        })
         return
       }
 
@@ -319,7 +328,10 @@ export default function DoctorPatientManagementPage() {
         'reviewed': 'Analysis marked as reviewed',
         'rejected': 'Analysis rejected'
       }
-      alert(statusMessages[status as keyof typeof statusMessages] || 'Status updated successfully')
+      toast({
+        title: "Status updated",
+        description: statusMessages[status as keyof typeof statusMessages] || 'Status updated successfully',
+      })
     } catch (error) {
       const errorInfo = {
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -330,7 +342,11 @@ export default function DoctorPatientManagementPage() {
         status
       }
       console.error('Error in handleUpdateMLStatus:', errorInfo)
-      alert('An error occurred while updating the status. Please try again.')
+      toast({
+        title: "Update error",
+        description: "An error occurred while updating the status. Please try again.",
+        variant: "destructive",
+      })
     }
   }
 
@@ -348,7 +364,10 @@ export default function DoctorPatientManagementPage() {
   const handleDownloadReport = async (report: Report) => {
     // Check if this is demo data
     if (report.id.startsWith('demo-report-')) {
-      alert('This is demo data. In a real application, the file would be downloaded from storage.')
+      toast({
+        title: "Demo data",
+        description: "This is demo data. In a real application, the file would be downloaded from storage.",
+      })
       return
     }
 
@@ -380,7 +399,11 @@ export default function DoctorPatientManagementPage() {
         reportId: report.id
       }
       console.error('Error downloading report:', errorInfo)
-      alert('Failed to download report. The file may not exist or you may not have permission to access it.')
+      toast({
+        title: "Download failed",
+        description: "Failed to download report. The file may not exist or you may not have permission.",
+        variant: "destructive",
+      })
     }
   }
 

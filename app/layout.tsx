@@ -2,7 +2,8 @@ import type { Metadata, Viewport } from 'next'
 import localFont from 'next/font/local'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
-import { Toaster } from '@/components/ui/sonner'
+import { Toaster as SonnerToaster } from '@/components/ui/sonner'
+import { Toaster } from '@/components/ui/toaster'
 
 const geist = localFont({
   src: './fonts/geist-latin.woff2',
@@ -83,6 +84,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           {children}
+          <SonnerToaster />
           <Toaster />
         </ThemeProvider>
       </body>

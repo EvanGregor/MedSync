@@ -12,6 +12,7 @@ import { UUID_REGEX } from "@/lib/constants"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
+import { useToast } from "@/hooks/use-toast"
 
 interface ImagingStudy {
   id: string
@@ -53,6 +54,7 @@ export default function LabImagingPage() {
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null)
   const router = useRouter()
+  const { toast } = useToast()
 
   useEffect(() => {
     const checkUser = async () => {
@@ -96,7 +98,11 @@ export default function LabImagingPage() {
 
   const handleSubmitScheduleStudy = async () => {
     if (!user || !scheduleForm.patient_id.trim() || !scheduleForm.study_type || !scheduleForm.body_part || !scheduleForm.scheduled_date) {
-      alert('Enter a patient, study type, body part, and scheduled time.')
+      toast({
+        title: "Missing fields",
+        description: "Enter a patient, study type, body part, and scheduled time.",
+        variant: "destructive",
+      })
       return
     }
 
@@ -110,7 +116,11 @@ export default function LabImagingPage() {
       : patientQuery.ilike('short_id', scheduleForm.patient_id.trim())
     const { data: patient, error: patientError } = await patientQuery.maybeSingle()
     if (patientError || !patient) {
-      alert('Patient not found. Enter a valid patient ID or Short ID.')
+      toast({
+        title: "Patient not found",
+        description: "Enter a valid patient ID or Short ID.",
+        variant: "destructive",
+      })
       return
     }
 
@@ -132,9 +142,18 @@ export default function LabImagingPage() {
 
     if (error || !study) {
       console.error('Could not schedule imaging study:', error)
-      alert('Study scheduling failed. Please try again.')
+      toast({
+        title: "Scheduling failed",
+        description: "Study scheduling failed. Please try again.",
+        variant: "destructive",
+      })
       return
     }
+    
+    toast({
+      title: "Success",
+      description: "Imaging study scheduled successfully.",
+    })
 
     setStudies((current) => [{ ...study, image_count: 0 }, ...current])
     setShowScheduleModal(false)
@@ -163,9 +182,18 @@ export default function LabImagingPage() {
 
     if (error || !updatedStudy) {
       console.error('Could not update imaging status:', error)
-      alert('Could not update study status. Please try again.')
+      toast({
+        title: "Update failed",
+        description: "Could not update study status. Please try again.",
+        variant: "destructive",
+      })
       return
     }
+    
+    toast({
+      title: "Status updated",
+      description: `Study status changed to ${newStatus}.`,
+    })
     setStudies((current) => current.map((study) => study.id === studyId
       ? { ...updatedStudy, image_count: updatedStudy.file_paths?.length || 0 }
       : study))

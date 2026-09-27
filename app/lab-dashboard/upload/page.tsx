@@ -669,15 +669,15 @@ export default function LabUploadPage() {
 
               <div className="space-y-4">
                 <label className="block text-[10px] font-black uppercase tracking-widest text-black/40">Binary Payload (File)</label>
-                <div className="border-2 border-dashed border-black/10 p-8 text-center hover:border-black/30 transition-all cursor-pointer relative bg-black/[0.01]">
-                   <Input
+                <div className="border-2 border-dashed border-black/10 p-8 text-center hover:border-black/30 transition-all cursor-pointer relative bg-black/[0.01] group">
+                   <input
                     type="file"
                     accept=".pdf,.jpg,.jpeg,.png,.dicom"
                     onChange={(e) => setFile(e.target.files?.[0] || null)}
                     required
-                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                   />
-                  <div className="flex flex-col items-center">
+                  <div className="flex flex-col items-center pointer-events-none">
                     <FileText className="h-8 w-8 mb-4 text-black/20" />
                     <p className="text-xs font-mono uppercase text-black/60">
                       {file ? file.name : "DROP FILE OR CLICK TO BROWSE"}

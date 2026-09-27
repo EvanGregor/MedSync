@@ -12,6 +12,7 @@ import { UUID_REGEX } from "@/lib/constants"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
+import { useToast } from "@/hooks/use-toast"
 
 interface Sample {
   id: string
@@ -45,6 +46,7 @@ export default function LabSamplesPage() {
     assigned_tech: ""
   })
   const router = useRouter()
+  const { toast } = useToast()
 
   useEffect(() => {
     const checkUser = async () => {
@@ -81,7 +83,11 @@ export default function LabSamplesPage() {
 
   const handleAddSample = async () => {
     if (!user || !addForm.patient_id.trim() || !addForm.sample_type || !addForm.collection_date) {
-      alert('Enter a patient, specimen type, and collection time.')
+      toast({
+        title: "Missing fields",
+        description: "Enter a patient, specimen type, and collection time.",
+        variant: "destructive",
+      })
       return
     }
 
@@ -95,7 +101,11 @@ export default function LabSamplesPage() {
       : patientQuery.ilike('short_id', addForm.patient_id.trim())
     const { data: patient, error: patientError } = await patientQuery.maybeSingle()
     if (patientError || !patient) {
-      alert('Patient not found. Enter a valid patient ID or Short ID.')
+      toast({
+        title: "Patient not found",
+        description: "Enter a valid patient ID or Short ID.",
+        variant: "destructive",
+      })
       return
     }
 
@@ -116,9 +126,18 @@ export default function LabSamplesPage() {
 
     if (error || !sample) {
       console.error('Could not register lab sample:', error)
-      alert('Specimen registration failed. Please try again.')
+      toast({
+        title: "Registration failed",
+        description: "Specimen registration failed. Please try again.",
+        variant: "destructive",
+      })
       return
     }
+
+    toast({
+      title: "Success",
+      description: "Specimen successfully registered.",
+    })
 
     setSamples((current) => [sample as Sample, ...current])
     setShowAddModal(false)
@@ -142,9 +161,18 @@ export default function LabSamplesPage() {
 
     if (error || !sample) {
       console.error('Could not update lab sample:', error)
-      alert('Could not update specimen status. Please try again.')
+      toast({
+        title: "Update failed",
+        description: "Could not update specimen status. Please try again.",
+        variant: "destructive",
+      })
       return
     }
+    
+    toast({
+      title: "Status updated",
+      description: `Specimen status changed to ${newStatus}.`,
+    })
     setSamples((current) => current.map((row) => row.id === sampleId ? sample as Sample : row))
     setSelectedSample(sample as Sample)
   }
