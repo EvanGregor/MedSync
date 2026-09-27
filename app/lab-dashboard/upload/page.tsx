@@ -50,23 +50,37 @@ export default function LabUploadPage() {
   const [uploadError, setUploadError] = useState<string | null>(null)
 
   useEffect(() => {
+    let active = true
     const checkUser = async () => {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (!user || user.user_metadata?.role !== "lab") {
+      try {
+        const supabase = createClient()
+        // The session is already persisted by the login flow. Middleware
+        // validates it server-side; read it locally here to avoid a second
+        // auth network request blocking the upload screen.
+        const { data: { session }, error } = await supabase.auth.getSession()
+        if (error) throw error
+        const user = session?.user
+
+        const role = user?.app_metadata?.role ?? user?.user_metadata?.role
+        if (!user || role !== "lab") {
+          router.push("/login")
+          return
+        }
+
+        if (active) setUser(user)
+      } catch (error) {
+        console.error("Unable to verify lab session:", error)
         router.push("/login")
-        return
+      } finally {
+        if (active) setLoading(false)
       }
-      
-      setUser(user)
-      setLoading(false)
     }
     
     checkUser()
+    return () => { active = false }
   }, [router])
 
-  const fetchPatientProfile = async (patientId: string) => {
+  const fetchPatientProfile = async (patientId: string, doctorId = formData.doctorId) => {
     if (!patientId.trim()) {
       setPatientProfile(null)
       return
@@ -75,7 +89,7 @@ export default function LabUploadPage() {
     // Validate patientId format and length
     const trimmedId = patientId.trim()
     if (trimmedId.length > 100) {
-      console.error('❌ Patient ID too long:', trimmedId.length, 'characters')
+      console.warn('❌ Patient ID too long:', trimmedId.length, 'characters')
       toast({
         title: "Invalid Patient ID",
         description: "Patient ID is too long. Please enter a valid Short ID or UUID.",
@@ -86,74 +100,17 @@ export default function LabUploadPage() {
       return
     }
 
-    console.log('🔍 Fetching patient profile for ID:', trimmedId)
-    console.log('🔍 Patient ID type:', typeof trimmedId)
-    console.log('🔍 Patient ID length:', trimmedId.length)
-
     setLoadingPatient(true)
     try {
       const supabase = createClient()
-      
-      // Use the unified view that handles both UUID and Short ID lookups
-      // Use individual queries instead of .or() to avoid syntax issues
-      let profile: any = null
-      let error: any = null
-      
-      // Try by ID first
-      if (trimmedId) {
-        const { data: byId, error: idError } = await supabase
-          .from('patient_profiles_unified')
-          .select('*')
-          .eq('id', trimmedId)
-          .maybeSingle()
-        
-        if (byId && !idError) {
-          profile = byId
-        } else {
-          // Try by user_id
-          const { data: byUserId, error: userIdError } = await supabase
-            .from('patient_profiles_unified')
-            .select('*')
-            .eq('user_id', trimmedId)
-            .maybeSingle()
-          
-          if (byUserId && !userIdError) {
-            profile = byUserId
-          } else {
-            // Try by short_id (case-insensitive)
-            const { data: byShortId, error: shortIdError } = await supabase
-              .from('patient_profiles_unified')
-              .select('*')
-              .ilike('short_id', trimmedId)
-              .maybeSingle()
-            
-            if (byShortId && !shortIdError) {
-              profile = byShortId
-            } else {
-              error = idError || userIdError || shortIdError
-            }
-          }
-        }
-      }
-
-      // If still not found, try direct short_id resolution
-      if (!profile && !UUID_REGEX.test(trimmedId)) {
-        const { data: mapping } = await supabase
-          .from('user_short_ids')
-          .select('user_id')
-          .ilike('short_id', trimmedId)
-          .eq('role', 'patient')
-          .maybeSingle()
-
-        if (mapping?.user_id) {
-          const { data: profileByShort } = await supabase
-            .from('patient_profiles_unified')
-            .select('*')
-            .eq('user_id', mapping.user_id)
-            .maybeSingle()
-          profile = profileByShort || null
-        }
-      }
+      let patientQuery = supabase
+        .from('profile_directory')
+        .select('id, name, role, short_id')
+        .eq('role', 'patient')
+      patientQuery = UUID_REGEX.test(trimmedId)
+        ? patientQuery.eq('id', trimmedId)
+        : patientQuery.ilike('short_id', trimmedId)
+      const { data: patientDirectory, error } = await patientQuery.maybeSingle()
 
       if (error) {
         console.warn('Error fetching patient:', error.message)
@@ -163,7 +120,7 @@ export default function LabUploadPage() {
           description: `Error: ${error.message}`,
           variant: "destructive"
         })
-      } else if (!profile) {
+      } else if (!patientDirectory) {
         console.warn('No patient profile found for identifier:', trimmedId)
         setPatientProfile(null)
         toast({
@@ -172,23 +129,56 @@ export default function LabUploadPage() {
           variant: "destructive"
         })
       } else {
-        setPatientProfile(profile)
-        // Auto-fill form with patient data
+        let patientDetails: any = patientDirectory
+        if (doctorId.trim()) {
+          let doctorQuery = supabase
+            .from('profile_directory')
+            .select('id')
+            .eq('role', 'doctor')
+          doctorQuery = UUID_REGEX.test(doctorId.trim())
+            ? doctorQuery.eq('id', doctorId.trim())
+            : doctorQuery.ilike('short_id', doctorId.trim())
+          const { data: doctorDirectory, error: doctorError } = await doctorQuery.maybeSingle()
+
+          if (doctorError || !doctorDirectory) {
+            throw doctorError || new Error('Doctor not found')
+          }
+
+          const { data: details, error: detailsError } = await supabase.rpc(
+            'get_lab_upload_patient_profile',
+            { p_patient_id: patientDirectory.id, p_doctor_id: doctorDirectory.id },
+          )
+
+          if (detailsError) throw detailsError
+          patientDetails = Array.isArray(details) ? details[0] : details
+          if (!patientDetails) {
+            setPatientProfile(null)
+            toast({
+              title: 'Patient is not assigned to this doctor',
+              description: 'Confirm the active patient-doctor assignment before uploading a report.',
+              variant: 'destructive',
+            })
+            return
+          }
+        }
+
+        setPatientProfile(patientDetails)
         setFormData(prev => ({
           ...prev,
-          patientName: profile.full_name || "",
-          dateOfBirth: profile.date_of_birth || "",
-          age: profile.age?.toString() || "",
-          gender: profile.gender || "",
-          phoneNumber: profile.phone_number || "",
-          address: profile.address || "",
-          familyHistory: profile.family_history || "",
-          previousDiagnosis: profile.medical_history || "",
-          ongoingTreatments: profile.ongoing_treatments || ""
+          patientName: patientDetails.name || patientDirectory.name || '',
+          dateOfBirth: patientDetails.date_of_birth || '',
+          age: patientDetails.date_of_birth
+            ? String(Math.floor((Date.now() - new Date(patientDetails.date_of_birth).getTime()) / 31_557_600_000))
+            : '',
+          gender: patientDetails.gender || '',
+          phoneNumber: patientDetails.phone || '',
+          address: patientDetails.address || '',
+          previousDiagnosis: patientDetails.chronic_conditions || '',
+          ongoingTreatments: patientDetails.current_medications || '',
         }))
         toast({
-          title: "✅ Patient Found!",
-          description: `Patient: ${profile.full_name} - Auto-filled with patient information.`,
+          title: 'Patient found',
+          description: `Patient: ${patientDetails.name || patientDirectory.name}`,
           duration: 3000,
           className: "bg-green-50 border-green-200 text-green-800"
         })
@@ -210,53 +200,14 @@ export default function LabUploadPage() {
     setLoadingDoctor(true)
     try {
       const supabase = createClient()
-      // Try resolving by multiple keys
-      let profile: any = null
-      let error: any = null
-
-      // If it looks like a UUID, try auth_id first, then users.id
-      if (UUID_REGEX.test(doctorId)) {
-        const byAuth = await supabase
-          .from('users')
-          .select('*')
-          .eq('auth_id', doctorId)
-          .eq('role', 'doctor')
-          .maybeSingle()
-        if (!byAuth.error && byAuth.data) {
-          profile = byAuth.data
-        } else {
-          const byUsersId = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', doctorId)
-            .eq('role', 'doctor')
-            .maybeSingle()
-          if (!byUsersId.error && byUsersId.data) {
-            profile = byUsersId.data
-          } else {
-            error = byAuth.error || byUsersId.error
-          }
-        }
-      }
-
-      // If not found, resolve short_id -> auth_id -> users row
-      if (!profile) {
-        const { data: mapping, error: mapErr } = await supabase
-          .from('user_short_ids')
-          .select('user_id')
-          .ilike('short_id', doctorId)
-          .maybeSingle()
-
-        if (!mapErr && mapping?.user_id) {
-          const { data: profileByShort } = await supabase
-            .from('users')
-            .select('*')
-            .eq('auth_id', mapping.user_id)
-            .eq('role', 'doctor')
-            .maybeSingle()
-          profile = profileByShort || null
-        }
-      }
+      let doctorQuery = supabase
+        .from('profile_directory')
+        .select('id, name, role, short_id, specialty')
+        .eq('role', 'doctor')
+      doctorQuery = UUID_REGEX.test(doctorId.trim())
+        ? doctorQuery.eq('id', doctorId.trim())
+        : doctorQuery.ilike('short_id', doctorId.trim())
+      const { data: profile, error } = await doctorQuery.maybeSingle()
 
       if (error) {
         console.warn('Error fetching doctor:', error.message)
@@ -292,14 +243,10 @@ export default function LabUploadPage() {
   }
 
   const handlePatientIdChange = (value: string) => {
-    console.log('🔍 handlePatientIdChange called with value:', value)
-    console.log('🔍 Value type:', typeof value)
-    console.log('🔍 Value length:', value?.length)
-    
     setFormData(prev => ({ ...prev, patientId: value }))
     // Fetch patient profile when Patient ID changes
     if (value.trim()) {
-      fetchPatientProfile(value)
+      fetchPatientProfile(value, formData.doctorId)
     } else {
       setPatientProfile(null)
       // Clear auto-filled data
@@ -322,6 +269,7 @@ export default function LabUploadPage() {
     setFormData(prev => ({ ...prev, doctorId: value }))
     if (value.trim()) {
       fetchDoctorProfile(value)
+      if (formData.patientId.trim()) fetchPatientProfile(formData.patientId, value)
     } else {
       setDoctorProfile(null)
     }
@@ -336,100 +284,47 @@ export default function LabUploadPage() {
 
     setUploading(true)
     setUploadError(null)
+    let uploadedFileName: string | null = null
 
     try {
-      // Generate unique filename
+      const supabase = createClient()
+      const resolveDirectoryId = async (identifier: string, role: 'doctor' | 'patient') => {
+        const trimmed = identifier.trim()
+        if (!trimmed) return null
+        let query = supabase
+          .from('profile_directory')
+          .select('id')
+          .eq('role', role)
+        query = UUID_REGEX.test(trimmed)
+          ? query.eq('id', trimmed)
+          : query.ilike('short_id', trimmed)
+        const { data, error } = await query.maybeSingle()
+        if (error) throw error
+        return data?.id || null
+      }
+
+      const resolvedDoctorId = await resolveDirectoryId(formData.doctorId, 'doctor')
+      const resolvedPatientId = await resolveDirectoryId(formData.patientId, 'patient')
+      if (!resolvedDoctorId || !resolvedPatientId) {
+        throw new Error('Enter a valid patient and doctor ID or Short ID.')
+      }
+
+      const { data: assignedPatient, error: assignmentError } = await supabase.rpc(
+        'get_lab_upload_patient_profile',
+        { p_patient_id: resolvedPatientId, p_doctor_id: resolvedDoctorId },
+      )
+      if (assignmentError) throw assignmentError
+      if (!assignedPatient || (Array.isArray(assignedPatient) && assignedPatient.length === 0)) {
+        throw new Error('This patient is not actively assigned to the selected doctor.')
+      }
+
       const fileExt = file.name.split('.').pop()
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
-      
-      console.log('🚀 Starting upload process...')
-      console.log('📁 File:', file.name, 'Size:', file.size, 'Type:', file.type)
-      console.log('👤 User:', user?.id, 'Role:', user?.user_metadata?.role)
-      
-      // Step 1: Upload file to Supabase Storage
-      console.log('📤 Uploading file to storage...')
-      const supabase = createClient()
-      
-      // User is already authenticated from useEffect
-      console.log('✅ User authenticated, proceeding with upload')
-      
-      // Check if storage bucket exists and is accessible
-      console.log('🪣 Checking storage bucket access...')
-      
-      // Try to list files in the reports bucket to test access
-      const { data: files, error: bucketError } = await supabase.storage
-        .from('reports')
-        .list('', { limit: 1 })
-      
-      if (bucketError) {
-        console.error('❌ Storage bucket access failed:', bucketError)
-        throw new Error(`Storage access failed: ${bucketError.message}`)
-      }
-      
-      console.log('✅ Reports bucket access confirmed, files count:', files?.length || 0)
-      
-      // Upload file to storage
-      console.log('📤 Attempting file upload to reports bucket...')
       const { error: uploadError } = await supabase.storage
         .from('reports')
-        .upload(fileName, file, {
-          cacheControl: '3600',
-          upsert: false
-        })
-
-      if (uploadError) {
-        console.error('❌ Storage upload failed:', uploadError)
-        throw new Error(`File upload failed: ${uploadError.message}`)
-      }
-
-      console.log('✅ File uploaded to storage successfully')
-
-      // Resolve doctor ID (Short ID or UUID)
-      let resolvedDoctorId: string | null = null
-      if (formData.doctorId.trim().length > 0) {
-        if (UUID_REGEX.test(formData.doctorId)) {
-          resolvedDoctorId = formData.doctorId
-        } else {
-          const supabaseResolve = createClient()
-          const { data: mapRow } = await supabaseResolve
-            .from('user_short_ids')
-            .select('user_id')
-            .ilike('short_id', formData.doctorId)
-            .maybeSingle()
-          resolvedDoctorId = mapRow?.user_id || null
-        }
-      }
-
-      if (!resolvedDoctorId) {
-        setUploadError('Doctor ID is required and must be a valid Short ID or UUID')
-        toast({ title: 'Invalid Doctor ID', description: 'Enter a valid Doctor Short ID or UUID. You can copy the Short ID from the doctor dashboard.', variant: 'destructive' })
-        setUploading(false)
-        return
-      }
-
-      // Resolve patient ID (Short ID or UUID)
-      let resolvedPatientId: string | null = null
-      if (formData.patientId.trim().length > 0) {
-        if (UUID_REGEX.test(formData.patientId)) {
-          resolvedPatientId = formData.patientId
-        } else {
-          const supabaseResolve = createClient()
-          const { data: mapRow } = await supabaseResolve
-            .from('user_short_ids')
-            .select('user_id')
-            .ilike('short_id', formData.patientId)
-            .eq('role', 'patient')
-            .maybeSingle()
-          resolvedPatientId = mapRow?.user_id || null
-        }
-      }
-
-      if (!resolvedPatientId) {
-        setUploadError('Patient ID is required and must be a valid Short ID or UUID')
-        toast({ title: 'Invalid Patient ID', description: 'Enter a valid Patient Short ID or UUID. You can copy the Short ID from the patient profile.', variant: 'destructive' })
-        setUploading(false)
-        return
-      }
+        .upload(fileName, file, { cacheControl: '3600', upsert: false })
+      if (uploadError) throw new Error(`File upload failed: ${uploadError.message}`)
+      uploadedFileName = fileName
 
       console.log('🔍 Resolved IDs - Patient:', resolvedPatientId, 'Doctor:', resolvedDoctorId)
       console.log('🔍 Original inputs - Patient:', formData.patientId, 'Doctor:', formData.doctorId)
@@ -585,6 +480,9 @@ export default function LabUploadPage() {
     } catch (error: any) {
       console.error('❌ Upload error:', error)
       const errorMessage = error.message || 'Upload failed'
+      if (uploadedFileName) {
+        await createClient().storage.from('reports').remove([uploadedFileName])
+      }
       setUploadError(errorMessage)
       toast({ 
         title: 'Upload failed', 
@@ -688,8 +586,8 @@ export default function LabUploadPage() {
                     <div className="p-4 bg-emerald-50 border border-emerald-500/10 relative overflow-hidden">
                       <div className="absolute left-0 top-0 h-full w-0.5 bg-emerald-600"></div>
                       <div className="text-[10px] font-mono text-emerald-800 uppercase space-y-1">
-                        <p><strong>NODE:</strong> {patientProfile.full_name}</p>
-                        <p><strong>AGE:</strong> {patientProfile.age} YR | {patientProfile.gender}</p>
+                        <p><strong>NODE:</strong> {patientProfile.name || patientProfile.full_name || 'UNKNOWN'}</p>
+                        <p><strong>AGE:</strong> {patientProfile.age || (patientProfile.date_of_birth ? new Date().getFullYear() - new Date(patientProfile.date_of_birth).getFullYear() : 'N/A')} YR | {patientProfile.gender || 'N/A'}</p>
                       </div>
                     </div>
                   )}

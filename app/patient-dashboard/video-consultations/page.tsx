@@ -83,6 +83,7 @@ export default function PatientVideoConsultationsPage() {
     }
 
     checkUser()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -102,13 +103,6 @@ export default function PatientVideoConsultationsPage() {
       setLoadError(null)
 
       let actualPatientId = patientId
-      const { data: patientData } = await supabase
-        .from('patients')
-        .select('id')
-        .eq('user_id', patientId)
-        .maybeSingle()
-
-      if (patientData) actualPatientId = patientData.id
 
       const today = format(new Date(), 'yyyy-MM-dd')
       const { data: appointments, error } = await supabase
@@ -122,7 +116,7 @@ export default function PatientVideoConsultationsPage() {
       if (error) throw error
 
       if (appointments) {
-        setConsultations(appointments.map(apt => ({
+        setConsultations(appointments.map((apt: any) => ({
           id: apt.id,
           doctor_name: apt.doctor_name || 'Dr. Unknown',
           doctor_id: apt.doctor_id,

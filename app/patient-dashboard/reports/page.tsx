@@ -14,7 +14,6 @@ export default function PatientReportsPage() {
   const [user, setUser] = useState<any>(null)
   const [reports, setReports] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [isSampleData, setIsSampleData] = useState(false)
   const [viewingReport, setViewingReport] = useState<any>(null)
   const [downloadingReport, setDownloadingReport] = useState<string | null>(null)
   const [viewModalOpen, setViewModalOpen] = useState(false)
@@ -35,330 +34,36 @@ export default function PatientReportsPage() {
       setUser(user)
 
       try {
-        // Try to resolve patient ID (could be short ID or UUID)
-        let resolvedPatientId = user.id // Default to auth user ID
+        const { data, error } = await supabase
+          .from('reports')
+          .select(`*, ml_suggestions (id, findings, confidence, recommendations, severity, status, processed_at)`)
+          .eq('patient_id', user.id)
+          .order('uploaded_at', { ascending: false })
 
-        // First try to find by short_id mapping
-        const { data: shortIdMapping } = await supabase
-          .from('user_short_ids')
-          .select('user_id')
-          .eq('user_id', user.id)
-          .maybeSingle()
-
-        // Also try to match by short_id if patient_id is provided in metadata
-        const metadataPatientId = user.user_metadata?.patient_id
-        if (metadataPatientId) {
-          const { data: metadataMapping } = await supabase
-            .from('user_short_ids')
-            .select('user_id')
-            .eq('short_id', metadataPatientId)
-            .maybeSingle()
-
-          if (metadataMapping?.user_id) {
-            resolvedPatientId = metadataMapping.user_id
-          }
-        }
-
-        console.log('🔍 Fetching reports for patient ID:', resolvedPatientId)
-        console.log('🔍 User ID:', user.id)
-        console.log('🔍 User metadata:', user.user_metadata)
-
-        // Fetch reports for this patient - use individual queries instead of .or() to avoid syntax issues
-        let reportsData: any[] = []
-        let error: any = null
-
-        // Try multiple ways to find reports for this patient
-        const queries = [
-          // Try by resolved patient ID (UUID)
-          supabase
-            .from('reports')
-            .select(`
-              *,
-              ml_suggestions (
-                id,
-                findings,
-                confidence,
-                recommendations,
-                severity,
-                status,
-                processed_at
-              )
-            `)
-            .eq('patient_id', resolvedPatientId)
-            .order('uploaded_at', { ascending: false }),
-
-          // Try by user ID (UUID)
-          supabase
-            .from('reports')
-            .select(`
-              *,
-              ml_suggestions (
-                id,
-                findings,
-                confidence,
-                recommendations,
-                severity,
-                status,
-                processed_at
-              )
-            `)
-            .eq('patient_id', user.id)
-            .order('uploaded_at', { ascending: false }),
-
-          // Try by short ID if user has one
-          supabase
-            .from('user_short_ids')
-            .select('short_id')
-            .eq('user_id', user.id)
-            .eq('role', 'patient')
-            .maybeSingle()
-            .then(async (shortIdResult) => {
-              if (shortIdResult.data?.short_id) {
-                return supabase
-                  .from('reports')
-                  .select(`
-                    *,
-                    ml_suggestions (
-                      id,
-                      findings,
-                      confidence,
-                      recommendations,
-                      severity,
-                      status,
-                      processed_at
-                    )
-                  `)
-                  .eq('patient_id', shortIdResult.data.short_id)
-                  .order('uploaded_at', { ascending: false })
-              }
-              return { data: [], error: null }
-            })
-        ]
-
-        // Execute all queries and combine results
-        for (const query of queries) {
-          try {
-            const result = await query
-            if (result.data && result.data.length > 0) {
-              reportsData = [...reportsData, ...result.data]
-            }
-            if (result.error) {
-              console.warn('Query error:', result.error)
-              error = result.error
-            }
-          } catch (err) {
-            console.warn('Query execution error:', err)
-          }
-        }
-
-        // Remove duplicates based on report ID
-        const uniqueReports = reportsData.filter((report, index, self) =>
-          index === self.findIndex(r => r.id === report.id)
-        )
-
-        reportsData = uniqueReports
-
-        console.log('🔍 Total reports found:', reportsData.length)
-        console.log('🔍 Reports data:', reportsData)
-
-        if (error) {
-          const errorDetails = {
-            message: error?.message || 'Unknown error',
-            details: error?.details || null,
-            hint: error?.hint || null,
-            code: error?.code || null,
-            timestamp: new Date().toISOString(),
-            context: 'fetching_patient_reports'
-          }
-          console.error('Error fetching reports:', errorDetails)
-          console.error('Full error object:', JSON.stringify(error, null, 2))
-          // Show sample data if there's an error
-          const sampleReports = [
-            {
-              id: '1',
-              patient_id: resolvedPatientId,
-              test_type: 'blood_test',
-              original_name: 'Complete Blood Count Report',
-              file_name: 'cbc_report_001.pdf',
-              priority: 'normal',
-              notes: 'Routine blood work - all values within normal range',
-              uploaded_at: new Date().toISOString()
-            },
-            {
-              id: '2',
-              patient_id: resolvedPatientId,
-              test_type: 'x_ray',
-              original_name: 'Chest X-Ray Report',
-              file_name: 'chest_xray_001.jpg',
-              priority: 'normal',
-              notes: 'Chest X-ray shows normal heart and lung fields',
-              uploaded_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-            },
-            {
-              id: '3',
-              patient_id: resolvedPatientId,
-              test_type: 'urine_test',
-              original_name: 'Urinalysis Report',
-              file_name: 'urinalysis_001.pdf',
-              priority: 'normal',
-              notes: 'Urine analysis shows normal findings',
-              uploaded_at: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
-            }
-          ]
-          setReports(sampleReports)
-          setIsSampleData(true)
-        } else {
-          console.log('Reports found:', reportsData?.length || 0)
-
-          // If no reports found, show sample data for demonstration
-          if (!reportsData || reportsData.length === 0) {
-            console.log('No reports found, showing sample data')
-            const sampleReports = [
-              {
-                id: '1',
-                patient_id: resolvedPatientId,
-                test_type: 'blood_test',
-                original_name: 'Complete Blood Count Report',
-                file_name: 'cbc_report_001.pdf',
-                priority: 'normal',
-                notes: 'Routine blood work - all values within normal range',
-                uploaded_at: new Date().toISOString()
-              },
-              {
-                id: '2',
-                patient_id: resolvedPatientId,
-                test_type: 'x_ray',
-                original_name: 'Chest X-Ray Report',
-                file_name: 'chest_xray_001.jpg',
-                priority: 'normal',
-                notes: 'Chest X-ray shows normal heart and lung fields',
-                uploaded_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-              },
-              {
-                id: '3',
-                patient_id: resolvedPatientId,
-                test_type: 'urine_test',
-                original_name: 'Urinalysis Report',
-                file_name: 'urinalysis_001.pdf',
-                priority: 'normal',
-                notes: 'Urine analysis shows normal findings',
-                uploaded_at: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
-              }
-            ]
-            setReports(sampleReports)
-            setIsSampleData(true)
-          } else {
-            console.log('Setting real reports:', reportsData)
-            setReports(reportsData)
-          }
-        }
+        if (error) throw error
+        setReports(data || [])
       } catch (error) {
-        const errorInfo = {
-          message: error instanceof Error ? error.message : 'Unknown error',
-          stack: error instanceof Error ? error.stack : null,
-          timestamp: new Date().toISOString(),
-          context: 'patient_reports_checkUser'
-        }
-        console.error('Error in checkUser:', errorInfo)
-        console.error('Raw error object:', error)
-        // Show sample data on error
-        const sampleReports = [
-          {
-            id: '1',
-            patient_id: user.id,
-            test_type: 'blood_test',
-            original_name: 'Complete Blood Count Report',
-            file_name: 'cbc_report_001.pdf',
-            priority: 'normal',
-            notes: 'Routine blood work - all values within normal range',
-            uploaded_at: new Date().toISOString()
-          },
-          {
-            id: '2',
-            patient_id: user.id,
-            test_type: 'x_ray',
-            original_name: 'Chest X-Ray Report',
-            file_name: 'chest_xray_001.jpg',
-            priority: 'normal',
-            notes: 'Chest X-ray shows normal heart and lung fields',
-            uploaded_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-          },
-          {
-            id: '3',
-            patient_id: user.id,
-            test_type: 'urine_test',
-            original_name: 'Urinalysis Report',
-            file_name: 'urinalysis_001.pdf',
-            priority: 'normal',
-            notes: 'Urine analysis shows normal findings',
-            uploaded_at: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
-          }
-        ]
-        setReports(sampleReports)
-        setIsSampleData(true)
+        console.error('Error fetching patient reports:', error)
+        toast({
+          title: 'Unable to load reports',
+          description: 'Please try again later.',
+          variant: 'destructive',
+        })
+        setReports([])
       }
 
       setLoading(false)
     }
 
     checkUser()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router])
 
   // Function to view a report
   const handleViewReport = async (report: any) => {
-    try {
-      setViewingReport(report)
-
-      if (isSampleData) {
-        // For sample data, show a demo modal
-        alert(`Viewing sample report: ${report.original_name}\n\nThis is a demonstration. Real reports will open in a modal.`)
-        return
-      }
-
-      const supabase = createClient()
-
-      // Get the file URL from Supabase Storage
-      const { data, error } = await supabase.storage
-        .from('reports')
-        .createSignedUrl(report.file_name, 3600) // 1 hour expiry
-
-      if (error) {
-        const errorDetails = {
-          message: error?.message || 'Unknown error',
-          details: (error as any)?.details || null,
-          code: (error as any)?.code || null,
-          timestamp: new Date().toISOString(),
-          context: 'getting_file_url'
-        }
-        console.error('Error getting file URL:', errorDetails)
-        toast({
-          title: 'Error viewing report',
-          description: 'Unable to retrieve the report file. Please try again later.',
-          variant: 'destructive'
-        })
-        return
-      }
-
-      // Set the URL and open modal for viewing
-      setReportUrl(data.signedUrl)
-      setViewModalOpen(true)
-
-    } catch (error) {
-      const errorInfo = {
-        message: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : null,
-        timestamp: new Date().toISOString(),
-        context: 'viewing_report'
-      }
-      console.error('Error viewing report:', errorInfo)
-      toast({
-        title: 'Error viewing report',
-        description: 'Something went wrong while trying to view the report.',
-        variant: 'destructive'
-      })
-    } finally {
-      setViewingReport(null)
-    }
+    setViewingReport(report)
+    window.open(`/api/file/signed-url?path=${report.file_name}`, '_blank', 'noopener,noreferrer')
+    setTimeout(() => setViewingReport(null), 500)
   }
 
   const handleViewReportDetails = (reportId: string) => {
@@ -370,36 +75,10 @@ export default function PatientReportsPage() {
     try {
       setDownloadingReport(report.id)
 
-      if (isSampleData) {
-        // For sample data, show a demo message
-        alert(`Downloading sample report: ${report.original_name}\n\nThis is a demonstration. Real reports will download automatically.`)
-        return
-      }
-
-      const supabase = createClient()
-
-      // Get the file from Supabase Storage
-      const { data, error } = await supabase.storage
-        .from('reports')
-        .download(report.file_name)
-
-      if (error) {
-        const errorDetails = {
-          message: error?.message || 'Unknown error',
-          details: (error as any)?.details || null,
-          code: (error as any)?.code || null,
-          timestamp: new Date().toISOString(),
-          context: 'downloading_file'
-        }
-        console.error('Error downloading file:', errorDetails)
-        toast({
-          title: 'Error downloading report',
-          description: 'Unable to download the report file.',
-          variant: 'destructive'
-        })
-        return
-      }
-
+      const response = await fetch(`/api/file/signed-url?path=${report.file_name}`)
+      if (!response.ok) throw new Error('Failed to fetch image')
+      const data = await response.blob()
+      
       // Create a download link
       const url = window.URL.createObjectURL(data)
       const link = document.createElement('a')
@@ -470,15 +149,6 @@ export default function PatientReportsPage() {
       </header>
 
       <div className="container mx-auto">
-        {isSampleData && (
-          <div className="mb-12 p-6 bg-indigo-50 border border-indigo-500/20 relative overflow-hidden">
-            <div className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-600"></div>
-            <p className="text-xs font-mono text-indigo-900 uppercase leading-relaxed">
-              <strong>DEMO MODE:</strong> Currently displaying sample records. Real medical data will populate once uploaded by verified providers.
-            </p>
-          </div>
-        )}
-
         {reports.length === 0 ? (
           <div className="border border-black/10 bg-white p-16 text-center">
             <FileText className="h-12 w-12 text-black/20 mx-auto mb-6" />
@@ -523,7 +193,7 @@ export default function PatientReportsPage() {
                       </h4>
                       <p className="text-sm font-mono text-amber-900 uppercase leading-relaxed">
                         Automated scan complete. No critical anomalies detected in cell morphology or telemetry.
-                        Detailed patient-friendly briefing available in "View Details".
+                         Detailed patient-friendly briefing available in &quot;View Details&quot;.
                       </p>
                     </div>
                   </div>
@@ -553,7 +223,7 @@ export default function PatientReportsPage() {
                       onClick={() => handleDownloadReport(report)}
                       disabled={downloadingReport === report.id}
                     >
-                      {downloadingReport === report.id ? 'FETCHING...' : 'DOWNLOAD PDF'}
+                      {downloadingReport === report.id ? 'FETCHING...' : 'DOWNLOAD SOURCE SCAN'}
                       <Download className="h-4 w-4" />
                     </Button>
                   </div>
@@ -610,4 +280,4 @@ export default function PatientReportsPage() {
       )}
     </div>
   )
-} 
+}

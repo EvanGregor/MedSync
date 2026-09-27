@@ -461,9 +461,15 @@ export default function MedicalVideoCall({
     }
 
     peerConnection.ontrack = event => {
-      const [stream] = event.streams
-      if (stream && remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = stream
+      if (remoteVideoRef.current) {
+        if (!remoteVideoRef.current.srcObject) {
+          remoteVideoRef.current.srcObject = event.streams[0] || new MediaStream([event.track])
+        } else {
+          const stream = remoteVideoRef.current.srcObject as MediaStream
+          if (!stream.getTracks().find(t => t.id === event.track.id)) {
+            stream.addTrack(event.track)
+          }
+        }
         setHasRemoteStream(true)
       }
     }
@@ -692,6 +698,7 @@ export default function MedicalVideoCall({
       if (localStream) attachLocalTracks(pc)
 
       setIsConnected(true)
+      isConnectedRef.current = true // Update ref synchronously to avoid race conditions
       addChatMessage('System', `Secure link established (ID: ${activeMeeting.meeting_id}).`)
       
       await sendSignal({ type: 'ready' })
@@ -834,13 +841,13 @@ export default function MedicalVideoCall({
     const supabase = createClient()
     const signalingChannel = supabase
       .channel(`consultation-signal-${consultation.id}`)
-      .on('broadcast', { event: 'signal' }, ({ payload }) => {
+      .on('broadcast', { event: 'signal' }, ({ payload }: { payload: any }) => {
         void handleIncomingSignalRef.current(payload as SignalPayload)
       })
-      .on('broadcast', { event: 'chat' }, ({ payload }) => {
+      .on('broadcast', { event: 'chat' }, ({ payload }: { payload: any }) => {
         handleIncomingChatRef.current(payload as ChatBroadcastPayload)
       })
-      .subscribe(status => {
+      .subscribe((status: string) => {
         if (status === 'SUBSCRIBED') setIsChannelReady(true)
         else if (status === 'CHANNEL_ERROR') {
           setIsChannelReady(false)
@@ -865,6 +872,7 @@ export default function MedicalVideoCall({
       setHasRemoteStream(false)
       setConnectionError(null)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
   if (!isOpen) return null

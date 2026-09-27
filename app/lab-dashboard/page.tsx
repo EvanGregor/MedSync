@@ -12,10 +12,19 @@ import Sidebar from "@/components/medical/navigation/Sidebar"
 import StatusBadge from "@/components/medical/common/StatusBadge"
 import ErrorBoundary from "@/components/error-boundary"
 
+interface LabStats {
+  pending: number
+  completed: number
+  urgent: number
+  total: number
+}
+
 export default function LabDashboard() {
   const [user, setUser] = useState<any>(null)
   const [shortId, setShortId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState<LabStats>({ pending: 0, completed: 0, urgent: 0, total: 0 })
+  const [recentReports, setRecentReports] = useState<any[]>([])
   const router = useRouter()
   const loadingRef = useRef(false)
 
@@ -34,23 +43,37 @@ export default function LabDashboard() {
 
       setUser(user)
       try {
-        let resolvedShortId: string | null = null
-        const { data: userRow } = await supabase.from('users').select('short_id').eq('auth_id', user.id).maybeSingle()
-        resolvedShortId = userRow?.short_id || null
+        const { data: profile } = await supabase.from('profile_directory').select('short_id').eq('id', user.id).maybeSingle()
+        setShortId(profile?.short_id || null)
 
-        if (!resolvedShortId) {
-          const { data: shortRow } = await supabase.from('user_short_ids').select('short_id').eq('user_id', user.id).maybeSingle()
-          resolvedShortId = shortRow?.short_id || null
-        }
-        setShortId(resolvedShortId)
+        const { data: reports, error } = await supabase
+          .from('reports')
+          .select('id, patient_id, patient_info, test_type, original_name, priority, uploaded_at, created_at, ml_suggestions(status)')
+          .eq('uploaded_by', user.id)
+          .order('uploaded_at', { ascending: false })
+        if (error) throw error
+
+        const uploadedReports = (reports || []).map((r: any) => ({
+          ...r,
+          status: (Array.isArray(r.ml_suggestions) ? r.ml_suggestions[0]?.status : r.ml_suggestions?.status) || 'pending'
+        }))
+        
+        setRecentReports(uploadedReports)
+        setStats({
+          pending: uploadedReports.filter((report: any) => ['pending', 'pending_review', 'uploaded', 'in_review', 'processing'].includes((report.status || 'pending').toLowerCase())).length,
+          completed: uploadedReports.filter((report: any) => ['completed', 'finalized', 'reviewed'].includes((report.status || '').toLowerCase())).length,
+          urgent: uploadedReports.filter((report: any) => ['urgent', 'critical', 'high'].includes((report.priority || '').toLowerCase())).length,
+          total: uploadedReports.length,
+        })
       } catch (e) {
-        console.warn('Failed to load short ID for lab tech:', e)
+        console.error('Failed to load lab dashboard data:', e)
       }
       setLoading(false)
       loadingRef.current = false
     }
 
     checkUser()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleLogout = async () => {
@@ -113,7 +136,7 @@ export default function LabDashboard() {
                 <FlaskConical className="h-6 w-6 text-black/20 group-hover:text-cyan-600 transition-colors" />
                 <span className="text-[10px] font-mono uppercase tracking-widest text-black/20">01</span>
               </div>
-              <div className="text-4xl font-black mb-1 tracking-tighter">18</div>
+              <div className="text-4xl font-black mb-1 tracking-tighter">{stats.pending}</div>
               <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-black/40">Pending Tests</div>
             </div>
 
@@ -123,7 +146,7 @@ export default function LabDashboard() {
                 <Microscope className="h-6 w-6 text-black/20 group-hover:text-indigo-600 transition-colors" />
                 <span className="text-[10px] font-mono uppercase tracking-widest text-black/20">02</span>
               </div>
-              <div className="text-4xl font-black mb-1 tracking-tighter">32</div>
+              <div className="text-4xl font-black mb-1 tracking-tighter">{stats.completed}</div>
               <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-black/40">Completed Cycle</div>
             </div>
 
@@ -133,7 +156,7 @@ export default function LabDashboard() {
                 <MessageSquare className="h-6 w-6 text-black/20 group-hover:text-red-600 transition-colors" />
                 <span className="text-[10px] font-mono uppercase tracking-widest text-black/20">03</span>
               </div>
-              <div className="text-4xl font-black mb-1 tracking-tighter">05</div>
+              <div className="text-4xl font-black mb-1 tracking-tighter">{stats.urgent}</div>
               <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-red-600/60">Urgent Packets</div>
             </div>
 
@@ -143,8 +166,8 @@ export default function LabDashboard() {
                 <Activity className="h-6 w-6 text-black/20 group-hover:text-emerald-600 transition-colors" />
                 <span className="text-[10px] font-mono uppercase tracking-widest text-black/20">04</span>
               </div>
-              <div className="text-4xl font-black mb-1 tracking-tighter">98<span className="text-lg opacity-20">%</span></div>
-              <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-black/40">Node Reliability</div>
+              <div className="text-4xl font-black mb-1 tracking-tighter">{stats.total}</div>
+              <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-black/40">Total Uploaded</div>
             </div>
           </div>
 
@@ -187,12 +210,8 @@ export default function LabDashboard() {
               </div>
 
               <div className="space-y-6">
-                {[
-                  { id: 'CZ-12345', type: 'Cardiac Enzymes', detail: 'Elevated troponin levels detected in uplink', icon: FlaskConical, badge: 'urgent', color: 'text-red-600' },
-                  { id: 'BK-67890', type: 'Blood Culture', detail: 'Positive culture growth identified (Alpha-01)', icon: Microscope, badge: 'high', color: 'text-red-600' },
-                  { id: 'XR-11111', type: 'Chest X-Ray', detail: 'Abnormal density patterns require verification', icon: Camera, badge: 'high', color: 'text-red-600' }
-                ].map((item, i) => (
-                  <div key={i} className="flex items-start gap-6 p-6 border border-black/5 hover:border-black/20 transition-all group cursor-pointer">
+                {recentReports.filter((report: any) => ['urgent', 'critical', 'high'].includes((report.priority || '').toLowerCase())).map((item: any) => (
+                  <div key={item.id} className="flex items-start gap-6 p-6 border border-black/5 hover:border-black/20 transition-all group">
                     <div className="p-3 bg-black/[0.03] group-hover:bg-black group-hover:text-white transition-colors">
                       <item.icon className="h-5 w-5" />
                     </div>
@@ -201,11 +220,12 @@ export default function LabDashboard() {
                         <span className="font-black font-mono text-xs text-black/40">#{item.id}</span>
                         <StatusBadge status={item.badge as any} size="sm" />
                       </div>
-                      <p className="font-bold text-lg uppercase tracking-tight mb-1">{item.type}</p>
-                      <p className="text-[10px] font-mono text-black/50 uppercase leading-relaxed">{item.detail}</p>
+                      <p className="font-bold text-lg uppercase tracking-tight mb-1">{item.test_type || item.original_name || 'Medical report'}</p>
+                      <p className="text-[10px] font-mono text-black/50 uppercase leading-relaxed">{item.status || 'Awaiting review'}</p>
                     </div>
                   </div>
                 ))}
+                {recentReports.filter((report: any) => ['urgent', 'critical', 'high'].includes((report.priority || '').toLowerCase())).length === 0 && <p className="text-sm font-mono text-black/40">No urgent uploads.</p>}
               </div>
             </div>
 
@@ -219,25 +239,22 @@ export default function LabDashboard() {
               </div>
 
               <div className="space-y-6">
-                {[
-                  { title: 'Blood Count', batch: 'NODE-001', desc: '15 results synchronized successfully' },
-                  { title: 'Lipid Panel', batch: 'NODE-002', desc: '8 packets processed in cycle' },
-                  { title: 'Radiology Logs', batch: 'UPLINK-04', desc: '12 imaging reports finalized' }
-                ].map((item, i) => (
-                  <div key={i} className="flex items-center gap-6 p-6 border border-black/5 hover:border-black/20 transition-all group">
+                {recentReports.slice(0, 3).map((item: any) => (
+                  <div key={item.id} className="flex items-center gap-6 p-6 border border-black/5 hover:border-black/20 transition-all group">
                     <div className="p-3 bg-black text-white">
                       <Upload className="h-5 w-5" />
                     </div>
                     <div className="flex-1">
                       <div className="flex justify-between items-start mb-2">
-                        <span className="font-bold text-lg uppercase tracking-tight">{item.title}</span>
-                        <span className="text-[10px] font-mono text-black/40 uppercase tracking-widest">{item.batch}</span>
+                        <span className="font-bold text-lg uppercase tracking-tight">{item.test_type || item.original_name || 'Medical report'}</span>
+                        <span className="text-[10px] font-mono text-black/40 uppercase tracking-widest">{item.patient_id}</span>
                       </div>
-                      <p className="text-[10px] font-mono text-black/50 uppercase leading-relaxed">{item.desc}</p>
+                      <p className="text-[10px] font-mono text-black/50 uppercase leading-relaxed">Uploaded {item.uploaded_at ? new Date(item.uploaded_at).toLocaleDateString() : 'date unavailable'}</p>
                     </div>
-                    <StatusBadge status="completed" size="sm" />
+                    <StatusBadge status={item.status || 'pending'} size="sm" />
                   </div>
                 ))}
+                {recentReports.length === 0 && <p className="text-sm font-mono text-black/40">No reports uploaded yet.</p>}
               </div>
             </div>
           </div>

@@ -432,16 +432,16 @@ export function useWebRTC({
     const supabase = createClient()
     const channel = supabase
       .channel(`consultation-signal-${consultationId}`)
-      .on('broadcast', { event: 'signal' }, ({ payload }) => {
+      .on('broadcast', { event: 'signal' }, ({ payload }: { payload: any }) => {
         void handleIncomingSignal(payload as SignalPayload)
       })
-      .on('broadcast', { event: 'chat' }, ({ payload }) => {
+      .on('broadcast', { event: 'chat' }, ({ payload }: { payload: any }) => {
         const chatPayload = payload as ChatBroadcastPayload
         if (chatPayload.fromUserId !== currentUserIdRef.current) {
           onChatRef.current?.(chatPayload)
         }
       })
-      .subscribe(status => {
+      .subscribe((status: string) => {
         if (status === 'SUBSCRIBED') setIsChannelReady(true)
         else if (status === 'CHANNEL_ERROR') setIsChannelReady(false)
       })

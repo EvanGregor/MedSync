@@ -112,11 +112,16 @@ jspm_packages/
 # Python
 venv/
 *.pkl
+.pytest_cache/
+.coverage
+htmlcov/
 ml-service/models/
 ml-service/bone_fracture_model.pkl
 ml-service/brain_tumor_model.pkl
 
 # Debug and Misc
+test-results/
+playwright-report/
 debug-output.json
 medsync-flow.*
 middleware-fixed.ts

@@ -1,4 +1,5 @@
 "use client"
+import Image from 'next/image'
 
 import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
@@ -178,9 +179,11 @@ export default function FilePreview({ fileName, originalName, patientId }: FileP
             <div className="border rounded-lg p-4 bg-gray-50">
               {isImage ? (
                 <div className="flex justify-center">
-                  <img 
+                  <Image 
                     src={fileUrl} 
-                    alt={originalName}
+                    alt={originalName || 'File preview'}
+                    width={800}
+                    height={800}
                     className="max-w-full max-h-96 object-contain rounded-lg shadow-sm"
                   />
                 </div>

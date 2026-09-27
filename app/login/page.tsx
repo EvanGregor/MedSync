@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -9,7 +9,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ArrowLeft, Mail, Lock, CheckCircle, AlertCircle, ArrowRight } from "lucide-react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase"
-import { useRouter } from "next/navigation"
 import { validateEmail, parseAuthError, getRoleDashboard } from "@/lib/auth-utils"
 import Image from "next/image"
 
@@ -19,13 +18,15 @@ export default function LoginPage() {
     password: "",
   })
   const [loading, setLoading] = useState(false)
+  const [isHydrated, setIsHydrated] = useState(false)
   const [error, setError] = useState("")
   const [showForgotPassword, setShowForgotPassword] = useState(false)
   const [resetEmail, setResetEmail] = useState("")
   const [resetLoading, setResetLoading] = useState(false)
   const [resetSuccess, setResetSuccess] = useState(false)
   const [resetError, setResetError] = useState("")
-  const router = useRouter()
+
+  useEffect(() => setIsHydrated(true), [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,16 +41,22 @@ export default function LoginPage() {
 
     try {
       const supabase = createClient()
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: formData.email,
         password: formData.password,
       })
 
       if (error) throw error
 
-      const { data: { user } } = await supabase.auth.getUser()
-      const role = user?.user_metadata?.role
-      router.push(getRoleDashboard(role))
+      // The password grant already returns the verified user. Avoid a second
+      // network round trip to /auth/v1/user before entering the dashboard.
+      const user = data.user
+      const role = user?.app_metadata?.role || user?.user_metadata?.role
+      
+      // Wait for cookie flush
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      window.location.assign(getRoleDashboard(role))
     } catch (error: any) {
       setError(parseAuthError(error))
     } finally {
@@ -116,7 +123,7 @@ export default function LoginPage() {
             {/* Label */}
             <div className="mb-6 flex items-center justify-between border-b border-black/10 pb-2">
               <span className="text-[10px] font-mono tracking-[0.2em] text-black/40 uppercase">
-                "SECURE ENTRY"
+                 &quot;SECURE ENTRY&quot;
               </span>
               <span className="text-[10px] font-mono text-black/40">
                 v2.0.25
@@ -138,7 +145,7 @@ export default function LoginPage() {
               <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b border-l border-black"></div>
 
               <div className="p-8 lg:p-10">
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form data-testid="login-form" data-hydrated={isHydrated} onSubmit={handleSubmit} className="space-y-6">
                   {error && (
                     <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 text-sm font-mono flex items-start space-x-2">
                       <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
@@ -154,9 +161,10 @@ export default function LoginPage() {
                       <Input
                         id="email"
                         type="email"
+                        maxLength={254}
                         placeholder="USER@MEDSYNC.COM"
                         value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        onChange={(e) => setFormData((current) => ({ ...current, email: e.target.value }))}
                         required
                         className="bg-transparent border-black/20 focus:border-black h-12 rounded-none font-mono placeholder:text-black/20 transition-all pl-10"
                       />
@@ -184,7 +192,7 @@ export default function LoginPage() {
                         type="password"
                         placeholder="••••••••"
                         value={formData.password}
-                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        onChange={(e) => setFormData((current) => ({ ...current, password: e.target.value }))}
                         required
                         className="bg-transparent border-black/20 focus:border-black h-12 rounded-none font-mono placeholder:text-black/20 transition-all pl-10"
                       />
@@ -246,7 +254,7 @@ export default function LoginPage() {
                 </Button>
               </div>
             ) : (
-              <form onSubmit={handleForgotPassword} className="space-y-6">
+              <form data-testid="forgot-password-form" data-hydrated={isHydrated} onSubmit={handleForgotPassword} className="space-y-6">
                 {resetError && (
                   <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 text-xs font-mono flex items-start space-x-2">
                     <AlertCircle className="h-4 w-4 mt-0.5" />
@@ -261,6 +269,7 @@ export default function LoginPage() {
                   <Input
                     id="reset-email"
                     type="email"
+                    maxLength={254}
                     placeholder="user@medsync.com"
                     value={resetEmail}
                     onChange={(e) => setResetEmail(e.target.value)}

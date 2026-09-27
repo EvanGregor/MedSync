@@ -5,7 +5,7 @@ import { use } from 'react'
 import Image from 'next/image'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Activity, Brain, FileText } from 'lucide-react'
+import { ArrowLeft, Activity, Brain, FileText, Download } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import { ErrorLogger } from '@/lib/error-logger'
 import Link from 'next/link'
@@ -36,6 +36,18 @@ export default function PatientReportDetail({ params }: { params: Promise<{ id: 
           setError('Report not found')
         } else {
           setReport(data)
+          // Audit Log
+          const { data: { session } } = await supabase.auth.getSession()
+          if (session?.user?.id) {
+            await supabase.from('audit_logs').insert({
+              actor_id: session.user.id,
+              patient_id: data.patient_id,
+              action: 'view',
+              resource_type: 'reports',
+              resource_id: id,
+              details: { viewer_role: 'patient' }
+            })
+          }
         }
       } catch (err) {
         ErrorLogger.logGenericError(err, {
@@ -84,7 +96,7 @@ export default function PatientReportDetail({ params }: { params: Promise<{ id: 
       {/* Header */}
       <header className="border-b border-black/10 pb-8 mb-12 flex items-end justify-between">
         <div>
-          <Link href="/patient-dashboard/reports" className="inline-flex items-center space-x-2 text-xs font-mono uppercase tracking-widest text-black/40 hover:text-black mb-4 transition-colors">
+          <Link href="/patient-dashboard/reports" className="print:hidden inline-flex items-center space-x-2 text-xs font-mono uppercase tracking-widest text-black/40 hover:text-black mb-4 transition-colors">
             <ArrowLeft className="h-3 w-3" />
             <span>Archive Index</span>
           </Link>
@@ -100,12 +112,19 @@ export default function PatientReportDetail({ params }: { params: Promise<{ id: 
           </div>
         </div>
         <div className="text-right hidden md:block">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-black/40 block mb-1">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-black/40 block mb-3">
             Data Integrity
           </span>
-          <span className="text-xl font-mono border-b-2 border-green-500 inline-flex items-center gap-2">
+          <span className="text-xl font-mono border-b-2 border-green-500 inline-flex items-center gap-2 mb-6">
             VERIFIED
           </span>
+          <Button
+            onClick={() => window.print()}
+            className="print:hidden w-full bg-black text-white hover:bg-black/80 rounded-none uppercase font-mono text-[10px] tracking-widest flex items-center justify-center gap-2 h-10"
+          >
+            <Download className="h-4 w-4" />
+            SAVE AS PDF
+          </Button>
         </div>
       </header>
 
@@ -167,12 +186,10 @@ export default function PatientReportDetail({ params }: { params: Promise<{ id: 
             <h2 className="text-xl font-black uppercase mb-8 tracking-tighter">Diagnostic Imagery</h2>
             <div className="bg-black/[0.02] border border-black/5 p-4 min-h-[400px] flex items-center justify-center relative group">
               {report.file_name?.match(/\.(jpg|jpeg|png|gif|bmp|webp)$/i) ? (
-                <Image
-                  src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/reports/${report.file_name}`}
+                <img
+                  src={`/api/file/signed-url?path=${report.file_name}`}
                   alt="Medical report"
-                  width={600}
-                  height={600}
-                  className="opacity-90 group-hover:opacity-100 transition-opacity grayscale hover:grayscale-0 duration-500"
+                  className="opacity-90 group-hover:opacity-100 transition-opacity grayscale hover:grayscale-0 duration-500 max-h-[600px] w-full object-contain"
                 />
               ) : (
                 <div className="text-center p-12">

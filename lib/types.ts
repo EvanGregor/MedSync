@@ -1,3 +1,5 @@
+import { Database } from './database.types'
+
 export interface PatientInfo {
   patientId: string
   fullName: string
@@ -42,33 +44,19 @@ export interface ReportResult {
   }
 }
 
-export interface Report {
-  id: string
+type DbReport = Database['public']['Tables']['reports']['Row']
+
+export interface Report extends Omit<DbReport, 'result' | 'patient_info'> {
+  // Override JSONB fields with custom interfaces
+  result?: ReportResult | null
+  patient_info?: PatientInfo | null
   
-  // Database column names (snake_case)
-  patient_id: string
-  test_type: string
-  original_name: string
-  file_name: string
-  uploaded_at: string
-  priority: string
-  notes?: string
-  user_name?: string
-  
-  // Image URLs
-  original_image_url?: string
-  overlayed_image_url?: string
-  masked_image_url?: string
-  
-  // JSONB fields from database
-  result?: ReportResult
-  patient_info?: PatientInfo
-  
-  // Legacy fields (camelCase)
-  overlayedImageUrl?: string
-  maskedImageUrl?: string
-  originalImageUrl?: string
-  patientInfo?: PatientInfo
-  createdAt?: string
-  updatedAt?: string
-} 
+  // Keep legacy camelCase fields to prevent massive regressions in components
+  overlayedImageUrl?: string | null
+  maskedImageUrl?: string | null
+  originalImageUrl?: string | null
+  patientInfo?: PatientInfo | null
+  createdAt?: string | null
+  updatedAt?: string | null
+  user_name?: string | null
+}

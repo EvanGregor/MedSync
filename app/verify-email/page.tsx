@@ -59,7 +59,7 @@ function VerifyEmailContent() {
           </div>
           <div className="mb-2">
             <span className="text-xs font-mono tracking-widest text-black/40 uppercase">
-              "EMAIL VERIFICATION"
+               &quot;EMAIL VERIFICATION&quot;
             </span>
           </div>
         </div>

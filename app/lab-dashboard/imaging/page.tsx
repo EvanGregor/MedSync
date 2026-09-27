@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Activity, Camera, ArrowLeft, Plus, Search, Filter, Clock, CheckCircle, AlertTriangle, Upload, Eye, X } from "lucide-react"
 import { createClient } from "@/lib/supabase"
+import { UUID_REGEX } from "@/lib/constants"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
@@ -24,6 +25,7 @@ interface ImagingStudy {
   radiologist?: string
   notes?: string
   image_count?: number
+  file_paths?: string[]
 }
 
 export default function LabImagingPage() {
@@ -63,133 +65,80 @@ export default function LabImagingPage() {
       }
 
       setUser(user)
-      loadImagingStudies()
+      await loadImagingStudies(user.id)
       setLoading(false)
     }
 
     checkUser()
   }, [router])
 
-  const loadImagingStudies = async () => {
-    // Mock data for demonstration
-    const mockStudies: ImagingStudy[] = [
-      {
-        id: "1",
-        patient_id: "P001",
-        patient_name: "John Smith",
-        study_type: "X-Ray",
-        body_part: "Chest",
-        scheduled_date: "2024-01-15T09:00:00Z",
-        status: "scheduled",
-        priority: "normal",
-        radiologist: "Dr. Sarah Wilson",
-        notes: "Routine chest X-ray",
-        image_count: 2
-      },
-      {
-        id: "2",
-        patient_id: "P002",
-        patient_name: "Sarah Johnson",
-        study_type: "CT Scan",
-        body_part: "Head",
-        scheduled_date: "2024-01-15T10:30:00Z",
-        status: "in_progress",
-        priority: "high",
-        radiologist: "Dr. Michael Brown",
-        notes: "Trauma evaluation",
-        image_count: 45
-      },
-      {
-        id: "3",
-        patient_id: "P003",
-        patient_name: "Michael Brown",
-        study_type: "MRI",
-        body_part: "Spine",
-        scheduled_date: "2024-01-15T08:15:00Z",
-        status: "completed",
-        priority: "normal",
-        radiologist: "Dr. Emily Davis",
-        notes: "Back pain evaluation",
-        image_count: 120
-      },
-      {
-        id: "4",
-        patient_id: "P004",
-        patient_name: "Emily Davis",
-        study_type: "Ultrasound",
-        body_part: "Abdomen",
-        scheduled_date: "2024-01-15T11:45:00Z",
-        status: "urgent",
-        priority: "critical",
-        radiologist: "Dr. David Wilson",
-        notes: "Emergency abdominal pain",
-        image_count: 15
-      },
-      {
-        id: "5",
-        patient_id: "P005",
-        patient_name: "David Wilson",
-        study_type: "Mammogram",
-        body_part: "Breast",
-        scheduled_date: "2024-01-15T07:30:00Z",
-        status: "completed",
-        priority: "normal",
-        radiologist: "Dr. Lisa Anderson",
-        notes: "Screening mammogram",
-        image_count: 4
-      }
-    ]
+  const loadImagingStudies = async (labId: string) => {
+    const { data, error } = await createClient()
+      .from('imaging_studies')
+      .select('*')
+      .eq('lab_id', labId)
+      .order('scheduled_date', { ascending: true })
 
-    setStudies(mockStudies)
+    if (error) {
+      console.error('Could not load imaging studies:', error)
+      setStudies([])
+      return
+    }
+    setStudies((data || []).map((study: any) => ({
+      ...study,
+      image_count: study.file_paths?.length || 0,
+    })))
   }
 
   const handleScheduleStudy = () => {
     setShowScheduleModal(true)
   }
 
-  const handleSubmitScheduleStudy = () => {
-    console.log("handleSubmitScheduleStudy called")
-    console.log("Form data:", scheduleForm)
-
-    if (!scheduleForm.patient_id || !scheduleForm.patient_name || !scheduleForm.study_type || !scheduleForm.body_part || !scheduleForm.scheduled_date) {
-      console.log("Validation failed - missing required fields")
-      console.log("patient_id:", scheduleForm.patient_id)
-      console.log("patient_name:", scheduleForm.patient_name)
-      console.log("study_type:", scheduleForm.study_type)
-      console.log("body_part:", scheduleForm.body_part)
-      console.log("scheduled_date:", scheduleForm.scheduled_date)
-      alert("Please fill in all required fields")
+  const handleSubmitScheduleStudy = async () => {
+    if (!user || !scheduleForm.patient_id.trim() || !scheduleForm.study_type || !scheduleForm.body_part || !scheduleForm.scheduled_date) {
+      alert('Enter a patient, study type, body part, and scheduled time.')
       return
     }
 
-    console.log("Creating new study...")
-    const newStudy: ImagingStudy = {
-      id: (studies.length + 1).toString(),
-      patient_id: scheduleForm.patient_id,
-      patient_name: scheduleForm.patient_name,
-      study_type: scheduleForm.study_type,
-      body_part: scheduleForm.body_part,
-      scheduled_date: scheduleForm.scheduled_date,
-      status: "scheduled",
-      priority: scheduleForm.priority as 'low' | 'normal' | 'high' | 'critical',
-      radiologist: scheduleForm.radiologist || undefined,
-      notes: scheduleForm.notes || undefined
+    const supabase = createClient()
+    let patientQuery = supabase
+      .from('profile_directory')
+      .select('id, name')
+      .eq('role', 'patient')
+    patientQuery = UUID_REGEX.test(scheduleForm.patient_id.trim())
+      ? patientQuery.eq('id', scheduleForm.patient_id.trim())
+      : patientQuery.ilike('short_id', scheduleForm.patient_id.trim())
+    const { data: patient, error: patientError } = await patientQuery.maybeSingle()
+    if (patientError || !patient) {
+      alert('Patient not found. Enter a valid patient ID or Short ID.')
+      return
     }
 
-    console.log("New study:", newStudy)
-    setStudies([...studies, newStudy])
+    const { data: study, error } = await supabase
+      .from('imaging_studies')
+      .insert({
+        lab_id: user.id,
+        patient_id: patient.id,
+        patient_name: scheduleForm.patient_name.trim() || patient.name || 'Patient',
+        study_type: scheduleForm.study_type,
+        body_part: scheduleForm.body_part.trim(),
+        scheduled_date: new Date(scheduleForm.scheduled_date).toISOString(),
+        priority: scheduleForm.priority,
+        radiologist: scheduleForm.radiologist.trim(),
+        notes: scheduleForm.notes,
+      })
+      .select('*')
+      .single()
+
+    if (error || !study) {
+      console.error('Could not schedule imaging study:', error)
+      alert('Study scheduling failed. Please try again.')
+      return
+    }
+
+    setStudies((current) => [{ ...study, image_count: 0 }, ...current])
     setShowScheduleModal(false)
-    setScheduleForm({
-      patient_id: "",
-      patient_name: "",
-      study_type: "",
-      body_part: "",
-      scheduled_date: "",
-      priority: "normal",
-      radiologist: "",
-      notes: ""
-    })
-    console.log("Study scheduled successfully!")
+    setScheduleForm({ patient_id: '', patient_name: '', study_type: '', body_part: '', scheduled_date: '', priority: 'normal', radiologist: '', notes: '' })
   }
 
   const handleViewStudy = (study: ImagingStudy) => {
@@ -202,10 +151,24 @@ export default function LabImagingPage() {
     setShowUploadModal(true)
   }
 
-  const handleStatusUpdate = (studyId: string, newStatus: 'scheduled' | 'in_progress' | 'completed' | 'urgent') => {
-    setStudies(studies.map(study =>
-      study.id === studyId ? { ...study, status: newStatus } : study
-    ))
+  const handleStatusUpdate = async (studyId: string, newStatus: 'scheduled' | 'in_progress' | 'completed' | 'urgent') => {
+    if (!user) return
+    const { data: updatedStudy, error } = await createClient()
+      .from('imaging_studies')
+      .update({ status: newStatus, updated_at: new Date().toISOString() })
+      .eq('id', studyId)
+      .eq('lab_id', user.id)
+      .select('*')
+      .single()
+
+    if (error || !updatedStudy) {
+      console.error('Could not update imaging status:', error)
+      alert('Could not update study status. Please try again.')
+      return
+    }
+    setStudies((current) => current.map((study) => study.id === studyId
+      ? { ...updatedStudy, image_count: updatedStudy.file_paths?.length || 0 }
+      : study))
   }
 
   const getStatusColor = (status: string) => {
@@ -282,23 +245,6 @@ export default function LabImagingPage() {
           </span>
         </div>
       </header>
-
-      {/* Quick Stats Grid - Superflat */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-px bg-black/10 border border-black/10 mb-16">
-        {[
-          { label: 'Scheduled Today', count: studies.filter(s => s.status === 'scheduled').length, accent: 'bg-indigo-600', sub: 'Awaiting Capture' },
-          { label: 'In Progress', count: studies.filter(s => s.status === 'in_progress').length, accent: 'bg-amber-600', sub: 'Active Scan' },
-          { label: 'Urgent Studies', count: studies.filter(s => s.status === 'urgent' || s.priority === 'critical').length, accent: 'bg-red-600', sub: 'Priority Sequence' },
-          { label: 'Completed Today', count: studies.filter(s => s.status === 'completed').length, accent: 'bg-emerald-600', sub: 'Post-Process' }
-        ].map((stat, i) => (
-          <div key={i} className="bg-white p-8 relative overflow-hidden group">
-            <div className={`absolute left-0 top-0 h-full w-0.5 ${stat.accent}`}></div>
-            <div className="text-[10px] font-mono uppercase tracking-widest text-black/40 mb-4">{stat.label}</div>
-            <div className="text-4xl font-black tracking-tighter mb-1">{stat.count}</div>
-            <div className="text-[10px] font-mono uppercase tracking-widest text-black/20 italic">{stat.sub}</div>
-          </div>
-        ))}
-      </div>
 
       {/* Filters and Search - Brutalist */}
       <div className="border border-black/10 bg-white p-10 relative mb-12">
@@ -680,18 +626,54 @@ export default function LabImagingPage() {
                       setUploading(true)
                       setUploadError(null)
                       const supabase = createClient()
+                      const uploadedPaths: string[] = []
                       try {
+                        if (!user) throw new Error('Your lab session has expired. Sign in again.')
+                        const filePaths = [...(selectedStudy.file_paths || [])]
                         for (const file of Array.from(selectedFiles)) {
-                          const fileExt = file.name.split('.').pop()
-                          const fileName = `${selectedStudy.id}_${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`
-                          const { error: uploadError } = await supabase.storage.from('imaging').upload(fileName, file)
+                          const fileExt = file.name.split('.').pop()?.toLowerCase()
+                          const contentType = fileExt === 'jpg' || fileExt === 'jpeg'
+                            ? 'image/jpeg'
+                            : fileExt === 'png'
+                              ? 'image/png'
+                              : fileExt === 'dcm' || fileExt === 'dicom'
+                                ? 'application/dicom'
+                                : null
+                          if (!contentType) throw new Error(`Unsupported imaging file: ${file.name}`)
+                          if (file.size === 0 || file.size > 50 * 1024 * 1024) {
+                            throw new Error(`${file.name} must be between 1 byte and 50 MB.`)
+                          }
+                          const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+                          const filePath = `${user.id}/${selectedStudy.id}/${Date.now()}-${Math.random().toString(36).slice(2)}-${safeName}`
+                          const { error: uploadError } = await supabase.storage
+                            .from('imaging')
+                            .upload(filePath, file, { contentType, upsert: false })
                           if (uploadError) throw uploadError
+                          uploadedPaths.push(filePath)
+                          filePaths.push(filePath)
                         }
-                        alert('Telemetry packets uploaded successfully!')
+
+                        const { data: updatedStudy, error: updateError } = await supabase
+                          .from('imaging_studies')
+                          .update({ file_paths: filePaths, status: 'completed', updated_at: new Date().toISOString() })
+                          .eq('id', selectedStudy.id)
+                          .eq('lab_id', user.id)
+                          .select('*')
+                          .single()
+                        if (updateError || !updatedStudy) {
+                          throw updateError || new Error('Could not save uploaded files to the study.')
+                        }
+
+                        setStudies((current) => current.map((study) => study.id === selectedStudy.id
+                          ? { ...updatedStudy, image_count: filePaths.length }
+                          : study))
+                        setSelectedStudy({ ...updatedStudy, image_count: filePaths.length })
                         setShowUploadModal(false)
                         setSelectedFiles(null)
-                        handleStatusUpdate(selectedStudy.id, 'completed')
                       } catch (err: any) {
+                        if (uploadedPaths.length > 0) {
+                          await supabase.storage.from('imaging').remove(uploadedPaths)
+                        }
                         setUploadError(err.message || 'Transmission failed')
                       } finally {
                         setUploading(false)

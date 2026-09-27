@@ -1,13 +1,15 @@
 import Image from 'next/image'
-import { createClient } from '@/lib/supabase'
+import { verifySession } from '@/lib/api-utils'
 import { Report } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 import BBoxAnalysisViewer from '@/components/medical/bbox-analysis-viewer'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Download } from 'lucide-react'
+import { PrintButton } from '@/components/ui/print-button'
 
 async function getReport(id: string): Promise<{ report: Report | null, mlSuggestion: any }> {
-  const supabase = createClient()
+  const { supabase, user } = await verifySession()
+  if (!user) return { report: null, mlSuggestion: null }
   
   // Get the report
   const { data: report, error: reportError } = await supabase
@@ -19,6 +21,18 @@ async function getReport(id: string): Promise<{ report: Report | null, mlSuggest
   if (reportError) {
     console.error('Error fetching report:', reportError)
     return { report: null, mlSuggestion: null }
+  }
+
+  // Audit Log
+  if (user?.id) {
+    await supabase.from('audit_logs').insert({
+      actor_id: user.id,
+      patient_id: report.patient_id,
+      action: 'view',
+      resource_type: 'reports',
+      resource_id: id,
+      details: { viewer_role: 'doctor' }
+    })
   }
 
   // Get the ML suggestion for this report
@@ -158,13 +172,14 @@ export default async function ReportDetail({ params }: { params: Promise<{ id: s
           </p>
         </div>
         <div className="text-right hidden md:block">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-black/40 block mb-1">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-black/40 block mb-3">
             System Status
           </span>
-          <span className="text-xl font-mono border-b border-black inline-flex items-center gap-2">
+          <span className="text-xl font-mono border-b border-black inline-flex items-center gap-2 mb-6">
             <span className="h-2 w-2 bg-green-500 rounded-full animate-pulse"></span>
             ACTIVE
           </span>
+          <PrintButton className="print:hidden w-full bg-black text-white hover:bg-black/80 rounded-none uppercase font-mono text-[10px] tracking-widest flex items-center justify-center h-10" />
         </div>
       </header>
       
@@ -181,11 +196,9 @@ export default async function ReportDetail({ params }: { params: Promise<{ id: s
               <div className="border border-black p-4 bg-white relative">
                 <span className="absolute top-0 right-0 bg-black text-white px-2 py-1 text-[10px] font-mono uppercase">Original</span>
                 <div className="flex justify-center mt-4">
-                  <Image
-                    src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/reports/${report.original_image_url || report.file_name}`}
+                  <img
+                    src={`/api/file/signed-url?path=${report.original_image_url || report.file_name}`}
                     alt="Medical scan"
-                    width={400}
-                    height={400}
                     className="w-full object-contain max-h-[500px]"
                   />
                 </div>
@@ -204,7 +217,7 @@ export default async function ReportDetail({ params }: { params: Promise<{ id: s
                 <span className="absolute top-0 right-0 bg-black text-white px-2 py-1 text-[10px] font-mono uppercase">AI Processed</span>
                 <div className="mt-4">
                   <BBoxAnalysisViewer
-                    imageUrl={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/reports/${report.original_image_url || report.file_name}`}
+                    imageUrl={`/api/file/signed-url?path=${report.original_image_url || report.file_name}`}
                     details={reportResultDetails}
                   />
                 </div>

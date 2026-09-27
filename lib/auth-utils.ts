@@ -6,6 +6,7 @@ import { createClient } from "./supabase"
 // ============================================
 
 export const validateEmail = (email: string): boolean => {
+    if (email.length > 254) return false
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     return re.test(email.toLowerCase())
 }
@@ -122,7 +123,8 @@ export const checkAuthStatus = async (): Promise<{
 }> => {
     try {
         const supabase = createClient()
-        const { data: { user }, error } = await supabase.auth.getUser()
+        const { data: { session }, error } = await supabase.auth.getSession()
+        const user = session?.user || null
 
         if (error || !user) {
             return {

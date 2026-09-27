@@ -81,17 +81,17 @@ export default function LabCommunicationPage() {
       
       // Get or create user record
       const { data: userData, error: userError } = await supabase
-        .from('users')
+        .from('profile_directory')
         .select('id')
-        .eq('auth_id', user.id)
+        .eq('id', user.id)
         .single()
 
       if (userError) {
         console.log('Creating new user record...')
         const { data: newUser, error: createError } = await supabase
-          .from('users')
+          .from('profiles')
           .insert({
-            auth_id: user.id,
+            id: user.id,
             name: user.user_metadata?.name || 'Lab Tech',
             email: user.email || '',
             role: 'lab'
@@ -105,7 +105,7 @@ export default function LabCommunicationPage() {
           setCurrentUserId(newUser.id)
           // Set user as online
           await supabase
-            .from('users')
+            .from('profiles')
             .update({ online: true })
             .eq('id', newUser.id)
         }
@@ -113,7 +113,7 @@ export default function LabCommunicationPage() {
         setCurrentUserId(userData.id)
         // Set user as online
         await supabase
-          .from('users')
+          .from('profiles')
           .update({ online: true })
           .eq('id', userData.id)
       }
@@ -122,6 +122,7 @@ export default function LabCommunicationPage() {
     }
 
     checkUser()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router])
 
   useEffect(() => {
@@ -129,6 +130,7 @@ export default function LabCommunicationPage() {
       loadContacts()
       setupRealtimeSubscriptions()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUserId])
 
   useEffect(() => {
@@ -136,6 +138,7 @@ export default function LabCommunicationPage() {
       loadMessages()
       markMessagesAsRead()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedContact, currentUserId])
 
   const setupRealtimeSubscriptions = () => {
@@ -147,7 +150,7 @@ export default function LabCommunicationPage() {
         schema: 'public',
         table: 'users',
         filter: `role.in.(doctor,patient)`
-      }, (payload) => {
+      }, (payload: any) => {
         if (payload.eventType === 'UPDATE') {
           const updatedUser = payload.new as any
           setOnlineUsers(prev => {
@@ -170,7 +173,7 @@ export default function LabCommunicationPage() {
         event: 'INSERT',
         schema: 'public',
         table: 'messages'
-      }, (payload) => {
+      }, (payload: any) => {
         const newMessage = payload.new as Message
         if (newMessage.receiver_id === currentUserId || newMessage.sender_id === currentUserId) {
           setMessages(prev => {
@@ -193,7 +196,7 @@ export default function LabCommunicationPage() {
   const loadContacts = async () => {
     try {
       const { data: usersData, error } = await supabase
-        .from('users')
+        .from('profile_directory')
         .select('id, name, role, specialty, online')
         .in('role', ['doctor', 'patient'])
         .order('online', { ascending: false })
@@ -224,7 +227,7 @@ export default function LabCommunicationPage() {
       setPatients(usersList.filter((u: any) => u.role === 'patient'))
       
       // Update online users set
-      const onlineUserIds = new Set(usersList.filter((u: any) => u.online).map((u: any) => u.id))
+      const onlineUserIds = new Set<string>(usersList.filter((u: any) => u.online).map((u: any) => u.id))
       setOnlineUsers(onlineUserIds)
       
       if (usersList.filter((u: any) => u.role === 'doctor').length > 0) {

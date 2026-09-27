@@ -1,12 +1,11 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft, User, Mail, Lock, UserCheck, CheckCircle, AlertCircle } from "lucide-react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase"
@@ -21,6 +20,7 @@ export default function SignUpPage() {
     role: "",
   })
   const [loading, setLoading] = useState(false)
+  const [isHydrated, setIsHydrated] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState(false)
   const [passwordValidation, setPasswordValidation] = useState({
@@ -31,8 +31,10 @@ export default function SignUpPage() {
   })
   const router = useRouter()
 
+  useEffect(() => setIsHydrated(true), [])
+
   const handlePasswordChange = (password: string) => {
-    setFormData({ ...formData, password })
+    setFormData((current) => ({ ...current, password }))
     setPasswordValidation(validatePassword(password))
   }
 
@@ -108,7 +110,7 @@ export default function SignUpPage() {
 
           <div className="mb-2">
             <span className="text-xs font-mono tracking-widest text-black/40 uppercase">
-              "CREATE ACCOUNT"
+               &quot;CREATE ACCOUNT&quot;
             </span>
           </div>
           <h1 className="text-5xl font-bold tracking-tight mb-4">
@@ -152,7 +154,7 @@ export default function SignUpPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form data-testid="signup-form" data-hydrated={isHydrated} onSubmit={handleSubmit} className="space-y-6">
                 {error && (
                   <div className="bg-black/5 border border-black/10 text-black px-4 py-3 text-sm flex items-start space-x-2">
                     <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
@@ -169,7 +171,7 @@ export default function SignUpPage() {
                     type="text"
                     placeholder="John Doe"
                     value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    onChange={(e) => setFormData((current) => ({ ...current, name: e.target.value }))}
                     required
                     className="border-black/20 focus:border-black h-12"
                   />
@@ -182,9 +184,10 @@ export default function SignUpPage() {
                   <Input
                     id="email"
                     type="email"
+                    maxLength={254}
                     placeholder="your@email.com"
                     value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    onChange={(e) => setFormData((current) => ({ ...current, email: e.target.value }))}
                     required
                     className="border-black/20 focus:border-black h-12"
                   />
@@ -240,16 +243,18 @@ export default function SignUpPage() {
                   <Label className="text-sm font-mono uppercase tracking-wide text-black/60">
                     Role
                   </Label>
-                  <Select value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value })}>
-                    <SelectTrigger className="border-black/20 focus:border-black h-12">
-                      <SelectValue placeholder="Select your role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="patient">Patient</SelectItem>
-                      <SelectItem value="doctor">Doctor</SelectItem>
-                      <SelectItem value="lab">Lab Technician</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <select
+                    aria-label="Role"
+                    data-testid="signup-role-trigger"
+                    value={formData.role}
+                    onChange={(event) => setFormData((current) => ({ ...current, role: event.target.value }))}
+                    className="flex h-12 w-full items-center justify-between rounded-md border border-black/20 bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  >
+                    <option value="">Select your role</option>
+                    <option data-testid="signup-role-option-patient" value="patient">Patient</option>
+                    <option data-testid="signup-role-option-doctor" value="doctor">Doctor</option>
+                    <option data-testid="signup-role-option-lab" value="lab">Lab Technician</option>
+                  </select>
                 </div>
 
                 <Button

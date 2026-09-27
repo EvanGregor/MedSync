@@ -61,7 +61,7 @@ export default function HomePage() {
           {/* Section Label */}
           <div className="mb-16">
             <span className="text-xs font-mono tracking-widest text-black/40 uppercase">
-              "CORE FUNCTIONALITY"
+               &quot;CORE FUNCTIONALITY&quot;
             </span>
           </div>
 
@@ -86,7 +86,7 @@ export default function HomePage() {
               index="03" 
               iconName="Shield" 
               title='"SECURE"' 
-              description="Role-based access control with audit trails. HIPAA-compliant infrastructure and encrypted data storage."
+              description="Role-based access control with audit trails and encrypted data storage."
               tag="RLS + JWT"
               delay={0.2}
             />
@@ -124,7 +124,7 @@ export default function HomePage() {
           <div className="max-w-4xl mx-auto">
             <div className="mb-8">
               <span className="text-xs font-mono tracking-widest text-black/40 uppercase">
-                "TECHNICAL ARCHITECTURE"
+                 &quot;TECHNICAL ARCHITECTURE&quot;
               </span>
             </div>
 
@@ -173,7 +173,7 @@ export default function HomePage() {
               <div>
                 <div className="mb-6">
                   <span className="text-xs font-mono tracking-widest text-black/40 uppercase">
-                    "GET ACCESS"
+                     &quot;GET ACCESS&quot;
                   </span>
                 </div>
                 <h2 className="text-4xl lg:text-5xl font-bold tracking-tight mb-4 uppercase">
@@ -195,7 +195,7 @@ export default function HomePage() {
                   </Button>
                 </Link>
                 <span className="text-sm text-black/40 font-mono">
-                  // FREE TRIAL AVAILABLE
+                  {'// FREE TRIAL AVAILABLE'}
                 </span>
               </div>
             </div>
@@ -206,40 +206,16 @@ export default function HomePage() {
       {/* Footer - Minimal Archive */}
       <footer className="bg-black text-white">
         <div className="container mx-auto px-6 lg:px-12 py-16">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-12 mb-16">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-16">
             <div>
               <div className="text-xs font-mono text-white/40 mb-4 tracking-widest uppercase">
-                Platform
+                About MedSync
               </div>
-              <ul className="space-y-3 text-sm text-white/80">
-                <li><Link href="/doctors" className="hover:text-white transition-colors">Doctors</Link></li>
-                <li><Link href="/patients" className="hover:text-white transition-colors">Patients</Link></li>
-                <li><Link href="/labs" className="hover:text-white transition-colors">Laboratories</Link></li>
-                <li><Link href="/ai" className="hover:text-white transition-colors">AI Assistant</Link></li>
-              </ul>
+              <p className="text-sm text-white/80 max-w-sm leading-relaxed">
+                An AI-powered healthcare collaboration platform connecting patients, doctors, and laboratory technicians for seamless medical care and advanced diagnostics.
+              </p>
             </div>
-            <div>
-              <div className="text-xs font-mono text-white/40 mb-4 tracking-widest uppercase">
-                Resources
-              </div>
-              <ul className="space-y-3 text-sm text-white/80">
-                <li><Link href="/docs" className="hover:text-white transition-colors">Documentation</Link></li>
-                <li><Link href="/api" className="hover:text-white transition-colors">API Reference</Link></li>
-                <li><Link href="/support" className="hover:text-white transition-colors">Support</Link></li>
-                <li><Link href="/status" className="hover:text-white transition-colors">Status</Link></li>
-              </ul>
-            </div>
-            <div>
-              <div className="text-xs font-mono text-white/40 mb-4 tracking-widest uppercase">
-                Legal
-              </div>
-              <ul className="space-y-3 text-sm text-white/80">
-                <li><Link href="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link></li>
-                <li><Link href="/terms" className="hover:text-white transition-colors">Terms of Service</Link></li>
-                <li><Link href="/compliance" className="hover:text-white transition-colors">Compliance</Link></li>
-              </ul>
-            </div>
-            <div>
+            <div className="md:text-right">
               <div className="text-xs font-mono text-white/40 mb-4 tracking-widest uppercase">
                 Social
               </div>

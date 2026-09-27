@@ -44,6 +44,7 @@ export default function NotificationBadge({ userId, role }: NotificationBadgePro
     return () => {
       subscription.unsubscribe()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, role])
 
   const loadUnreadCount = async () => {

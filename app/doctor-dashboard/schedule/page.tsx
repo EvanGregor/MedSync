@@ -51,9 +51,9 @@ export default function DoctorSchedulePage() {
 
       // Get the doctor ID from the doctors table
       const { data: doctorData } = await supabase
-        .from('doctors')
+        .from('profile_directory')
         .select('id')
-        .eq('user_id', user.id)
+        .eq('id', user.id)
         .maybeSingle()
 
       if (doctorData) {

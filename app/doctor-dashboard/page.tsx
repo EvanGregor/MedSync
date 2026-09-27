@@ -86,20 +86,20 @@ export default function DoctorDashboard() {
       // 1. Resolve internal doctor ID
       let actualDoctorId = authUserId
       const { data: doctorData } = await supabase
-        .from('doctors')
+        .from('profile_directory')
         .select('id')
-        .eq('user_id', authUserId)
+        .eq('id', authUserId)
         .maybeSingle()
       
       if (doctorData) actualDoctorId = doctorData.id
 
-      // Reports can store doctor_id as auth UUID, doctors.id, or short_id.
+      // Reports can store doctor_id as auth UUID or short_id.
       let doctorShortId: string | null = null
       try {
         const { data: shortIdData } = await supabase
-          .from('user_short_ids')
+          .from('profile_directory')
           .select('short_id')
-          .eq('user_id', authUserId)
+          .eq('id', authUserId)
           .maybeSingle()
         doctorShortId = shortIdData?.short_id || null
       } catch (shortIdError) {
@@ -126,7 +126,7 @@ export default function DoctorDashboard() {
       const { data: reports } = await supabase
         .from('reports')
         .select('*')
-        .in('doctor_id', doctorIdentifiers)
+        .eq('doctor_id', actualDoctorId)
         .order('created_at', { ascending: false })
 
       // 4. Keep only truly pending reports for dashboard review widgets
@@ -137,9 +137,18 @@ export default function DoctorDashboard() {
       // 5. Calculate Stats
       // Active patients = unique patients from appointments + reports
       const patientIds = new Set([
-        ...(appts?.map(a => a.patient_id) || []),
-        ...(reports?.map(r => r.patient_id) || [])
-      ])
+        ...(appts?.map((a: any) => a.patient_id) || []),
+        ...(reports?.map((r: any) => r.patient_id) || [])
+      ].filter(Boolean))
+
+      // Fetch patient profiles for mapping names (using profile_directory view)
+      const patientIdArray = Array.from(patientIds)
+      const { data: profiles } = await supabase
+        .from('profile_directory')
+        .select('id, name')
+        .in('id', patientIdArray.length > 0 ? patientIdArray : ['dummy'])
+
+      const profileMap = new Map((profiles || []).map((p: any) => [p.id, p.name]))
 
       setStats({
         activePatients: patientIds.size,
@@ -150,7 +159,7 @@ export default function DoctorDashboard() {
 
       const reviews = pendingReports.slice(0, 8).map((report: any) => ({
         id: report.id,
-        patient_name: report.patient_name || 'Unknown Patient',
+        patient_name: profileMap.get(report.patient_id) || report.patient_name || 'Unknown Patient',
         report_type: report.report_type || report.test_type || 'Medical Report',
         description: report.description || 'Report requires review',
         priority: (report.priority as any) || 'normal',
@@ -390,7 +399,7 @@ export default function DoctorDashboard() {
                 <div className="flex items-center justify-between mb-6 border-b border-black/10 pb-4">
                   <h3 className="text-xl font-bold uppercase flex items-center gap-2">
                     <span className="h-2 w-2 bg-black rounded-full"></span>
-                    Today's Appointments
+                     Today&apos;s Appointments
                   </h3>
                   <span className="text-[10px] font-mono uppercase border border-black/10 bg-black/5 px-2 py-1">
                     {stats.consultations} scheduled

@@ -291,7 +291,7 @@ class ChatAPI {
         event: 'INSERT',
         schema: 'public',
         table: 'messages'
-      }, (payload) => {
+      }, (payload: any) => {
         const message = payload.new as ChatMessage
         if (message.receiver_id === user_id || message.sender_id === user_id) {
           callback(message)
@@ -308,7 +308,7 @@ class ChatAPI {
         event: '*',
         schema: 'public',
         table: 'typing_status'
-      }, (payload) => {
+      }, (payload: any) => {
         const status = payload.new as TypingStatus
         callback(status)
       })
@@ -324,7 +324,7 @@ class ChatAPI {
         schema: 'public',
         table: 'chat_notifications',
         filter: `receiver_id=eq.${user_id}`
-      }, (payload) => {
+      }, (payload: any) => {
         const notification = payload.new as ChatNotification
         callback(notification)
       })

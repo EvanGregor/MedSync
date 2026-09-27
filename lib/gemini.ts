@@ -9,10 +9,19 @@ export interface GeminiResponse {
   error?: string
 }
 
+const REQUEST_TIMEOUT_MS = 15_000
+
 export async function callGeminiAPI(prompt: string, context: string = ""): Promise<GeminiResponse> {
+  if (typeof prompt !== 'string' || !prompt.trim()) {
+    return { success: false, message: 'Please enter a message before asking the AI assistant.', error: 'Prompt is required.' }
+  }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(new Error('Gemini request timed out.')), REQUEST_TIMEOUT_MS)
   try {
     const response = await fetch('/api/chat', {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -86,6 +95,8 @@ export async function callGeminiAPI(prompt: string, context: string = ""): Promi
       message: "I'm sorry, I'm having trouble connecting to my knowledge base right now. Please try again later or consult your healthcare provider for immediate assistance.",
       error: error instanceof Error ? error.message : 'Unknown error'
     }
+  } finally {
+    clearTimeout(timeout)
   }
 }
 

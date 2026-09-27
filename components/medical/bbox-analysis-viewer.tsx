@@ -27,11 +27,11 @@ interface Props {
 
 export default function BBoxAnalysisViewer({ imageUrl, details }: Props) {
   const [showBoxes, setShowBoxes] = useState(true)
-  const detections = details?.detections ?? []
   const imageWidth = details?.image_width
   const imageHeight = details?.image_height
 
   const normalizedDetections = useMemo(() => {
+    const detections = details?.detections ?? []
     if (!imageWidth || !imageHeight) return []
 
     return detections
@@ -50,7 +50,7 @@ export default function BBoxAnalysisViewer({ imageUrl, details }: Props) {
         }
       })
       .filter((det) => det.width > 0 && det.height > 0)
-  }, [detections, imageWidth, imageHeight])
+  }, [details?.detections, imageWidth, imageHeight])
 
   return (
     <div className="space-y-4">
@@ -66,13 +66,10 @@ export default function BBoxAnalysisViewer({ imageUrl, details }: Props) {
       </div>
 
       <div className="relative mx-auto w-full max-w-xl overflow-hidden rounded-lg border bg-black/5">
-        <Image
+        <img
           src={imageUrl}
           alt="X-ray with detection overlay"
-          width={800}
-          height={800}
           className="h-auto w-full object-contain"
-          unoptimized
         />
         {showBoxes &&
           normalizedDetections.map((det, idx) => (
@@ -110,7 +107,7 @@ export default function BBoxAnalysisViewer({ imageUrl, details }: Props) {
           <p className="text-sm text-gray-700">
             Models agree: {details?.models_agree === true ? "Yes" : details?.models_agree === false ? "No" : "Unknown"}
           </p>
-          <p className="text-sm text-gray-700">Detections: {detections.length}</p>
+          <p className="text-sm text-gray-700">Detections: {details?.detections?.length || 0}</p>
         </div>
       </div>
     </div>

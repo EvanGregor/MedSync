@@ -31,7 +31,7 @@ export function MassiveNumber({
                 <div className="flex flex-col justify-end pb-8 md:pb-16">
                     {/* Quoted label */}
                     <div className="text-xl md:text-2xl font-mono uppercase tracking-[0.3em] mb-2">
-                        "{label}"
+                         &quot;{label}&quot;
                     </div>
 
                     {/* Sublabel */}

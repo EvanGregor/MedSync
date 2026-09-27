@@ -18,6 +18,7 @@ export default function ResetPasswordPage() {
     confirmPassword: "",
   })
   const [loading, setLoading] = useState(false)
+  const [isHydrated, setIsHydrated] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -37,15 +38,17 @@ export default function ResetPasswordPage() {
       const { data: { user } } = await supabase.auth.getUser()
 
       if (!user) {
-        setError(AUTH_ERRORS.INVALID_RESET_LINK)
+        setError((currentError) => currentError || AUTH_ERRORS.INVALID_RESET_LINK)
       }
     }
 
     checkAuth()
   }, [])
 
+  useEffect(() => setIsHydrated(true), [])
+
   const handlePasswordChange = (password: string) => {
-    setFormData({ ...formData, password })
+    setFormData((current) => ({ ...current, password }))
     setPasswordValidation(validatePassword(password))
   }
 
@@ -125,7 +128,7 @@ export default function ResetPasswordPage() {
 
           <div className="mb-2">
             <span className="text-xs font-mono tracking-widest text-black/40 uppercase">
-              "PASSWORD RESET"
+               &quot;PASSWORD RESET&quot;
             </span>
           </div>
           <h1 className="text-5xl font-bold tracking-tight mb-4">
@@ -144,7 +147,7 @@ export default function ResetPasswordPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form data-testid="reset-password-form" data-hydrated={isHydrated} onSubmit={handleSubmit} className="space-y-6">
               {error && (
                 <div className="bg-black/5 border border-black/10 text-black px-4 py-3 text-sm flex items-start space-x-2">
                   <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
@@ -219,7 +222,7 @@ export default function ResetPasswordPage() {
                     type={showConfirmPassword ? "text" : "password"}
                     placeholder="••••••••"
                     value={formData.confirmPassword}
-                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                    onChange={(e) => setFormData((current) => ({ ...current, confirmPassword: e.target.value }))}
                     required
                     className="border-black/20 focus:border-black h-12 pr-10"
                   />

@@ -3,9 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import path from 'path'
 import axios from 'axios'
 import FormData from 'form-data'
-import { UUID_REGEX } from '@/lib/constants'
 import { analysisRequestSchema } from '@/lib/schemas'
-import { verifySession, unauthorizedResponse } from '@/lib/api-utils'
+import { verifySession, unauthorizedResponse, forbiddenResponse, hasRole } from '@/lib/api-utils'
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,6 +12,9 @@ export async function POST(request: NextRequest) {
     const { user } = await verifySession()
     if (!user) {
       return unauthorizedResponse()
+    }
+    if (!hasRole(user, 'lab')) {
+      return forbiddenResponse()
     }
 
     // Validate environment variables first
@@ -68,6 +70,24 @@ export async function POST(request: NextRequest) {
       }
     )
 
+    const { data: report, error: reportError } = await supabase
+      .from('reports')
+      .select('id, file_name, original_name, patient_id, doctor_id, uploaded_by, test_type')
+      .eq('id', reportId)
+      .maybeSingle()
+
+    if (reportError) {
+      console.error('[ml-process] Report access check failed:', reportError.message)
+      return NextResponse.json({ error: 'Failed to verify report access' }, { status: 500 })
+    }
+    if (!report || report.uploaded_by !== user.id || report.file_name !== fileName ||
+        report.original_name !== originalName || report.test_type !== testType) {
+      return forbiddenResponse()
+    }
+
+    const resolvedPatientId = report.patient_id
+    const resolvedDoctorId = report.doctor_id
+
     // Download file from Supabase Storage using service role
     const { data: fileData, error: downloadError } = await supabase.storage
       .from('reports')
@@ -92,7 +112,11 @@ export async function POST(request: NextRequest) {
       fastApiForm.append('scan_type', testType === 'x_ray' ? 'xray' : testType === 'mri' ? 'mri' : testType);
       fastApiForm.append('file', buffer, originalName);
 
-      const response = await axios.post('http://localhost:8000/analyze', fastApiForm, {
+      if (!process.env.ML_SERVICE_URL) {
+        throw new Error('ML_SERVICE_URL is not configured');
+      }
+      const mlServiceUrl = process.env.ML_SERVICE_URL;
+      const response = await axios.post(`${mlServiceUrl}/analyze`, fastApiForm, {
         headers: {
           ...fastApiForm.getHeaders(),
           'X-Internal-Secret': process.env.INTERNAL_API_KEY
@@ -116,56 +140,6 @@ export async function POST(request: NextRequest) {
         recommendations: 'Manual review recommended.',
         severity: 'unknown',
       };
-    }
-
-    // Resolve patientId: allow short_id or UUID for consistency with lab-upload
-    let resolvedPatientId = patientId
-    // Resolve doctorId
-    let resolvedDoctorId = doctorId
-
-    if (doctorId && !UUID_REGEX.test(doctorId)) {
-      const { data: shortDoc, error: docErr } = await supabase
-        .from('user_short_ids')
-        .select('user_id')
-        .ilike('short_id', doctorId)
-        .maybeSingle()
-
-      if (docErr) {
-        console.warn('[ml-process] Doctor Short ID resolution error:', docErr.message)
-      }
-
-      if (shortDoc?.user_id) {
-        resolvedDoctorId = shortDoc.user_id
-      } else {
-        console.warn('[ml-process] Doctor Short ID not found:', doctorId)
-      }
-    }
-
-    if (patientId && !UUID_REGEX.test(patientId)) {
-      const { data: shortMatch, error: shortErr } = await supabase
-        .from('user_short_ids')
-        .select('user_id')
-        .ilike('short_id', patientId)
-        .maybeSingle()
-
-      if (shortErr) {
-        console.warn('[ml-process] Patient Short ID resolution error:', shortErr.message)
-      }
-
-      if (!shortErr && shortMatch?.user_id) {
-        resolvedPatientId = shortMatch.user_id
-      } else {
-        console.warn('[ml-process] Patient Short ID not found:', patientId)
-      }
-    }
-
-    // Use the reportId passed from the frontend
-    if (!reportId) {
-      console.error('[ml-process] No reportId provided')
-      return NextResponse.json(
-        { error: 'Report ID is required for ML processing' },
-        { status: 400 }
-      )
     }
 
     // Update the existing report with ML results
@@ -206,7 +180,7 @@ export async function POST(request: NextRequest) {
       .from('ml_suggestions')
       .insert({
         report_id: reportId,
-        patient_id: resolvedPatientId || patientId,
+        patient_id: resolvedPatientId,
         test_type: testType,
         findings: prediction.findings,
         confidence: prediction.confidence,
@@ -226,12 +200,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Audit log creation for system action
+    await supabase.from('audit_logs').insert({
+      actor_id: null, // System action
+      patient_id: resolvedPatientId,
+      action: 'create',
+      resource_type: 'ml_suggestions',
+      resource_id: suggestionData.id,
+      details: { test_type: testType, confidence: prediction.confidence }
+    })
+
     // Create notification for doctors about new ML analysis
     try {
       await supabase
         .from('notifications')
         .insert({
-          user_id: reportId, // Use report ID as user_id for now
+          user_id: resolvedDoctorId || resolvedPatientId || patientId, // Route to the doctor, not the report
           title: 'AI Analysis Complete',
           message: `AI analysis completed for ${testType} report - Patient ID: ${patientId}`,
           notification_type: 'ml_suggestion',

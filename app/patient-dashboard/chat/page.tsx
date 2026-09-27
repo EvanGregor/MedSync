@@ -123,17 +123,17 @@ export default function PatientChatPage() {
         
         // Get or create user record
         const { data: userData, error: userError } = await supabase
-          .from('users')
+          .from('profile_directory')
           .select('id')
-          .eq('auth_id', user.id)
+          .eq('id', user.id)
           .single()
 
         if (userError) {
           console.log('Creating new user record...')
           const { data: newUser, error: createError } = await supabase
-            .from('users')
+            .from('profiles')
             .insert({
-              auth_id: user.id,
+              id: user.id,
               name: user.user_metadata?.name || 'Patient',
               email: user.email || '',
               role: 'patient'
@@ -153,7 +153,7 @@ export default function PatientChatPage() {
             setCurrentUserId(newUser.id)
             // Set user as online
             await supabase
-              .from('users')
+              .from('profiles')
               .update({ online: true })
               .eq('id', newUser.id)
           }
@@ -162,7 +162,7 @@ export default function PatientChatPage() {
           setCurrentUserId(userData.id)
           // Set user as online
           await supabase
-            .from('users')
+            .from('profiles')
             .update({ online: true })
             .eq('id', userData.id)
         }
@@ -182,6 +182,7 @@ export default function PatientChatPage() {
       loadContacts()
       setupRealtimeSubscriptions()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUserId, supabase])
 
   useEffect(() => {
@@ -189,6 +190,7 @@ export default function PatientChatPage() {
       loadMessages()
       markMessagesAsRead()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedContact, currentUserId])
 
   const setupRealtimeSubscriptions = () => {
@@ -198,9 +200,9 @@ export default function PatientChatPage() {
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
-        table: 'users',
+        table: 'profiles',
         filter: `role.in.(doctor,lab)`
-      }, (payload) => {
+      }, (payload: any) => {
         if (payload.eventType === 'UPDATE') {
           const updatedUser = payload.new as any
           setOnlineUsers(prev => {
@@ -223,7 +225,7 @@ export default function PatientChatPage() {
         event: 'INSERT',
         schema: 'public',
         table: 'messages'
-      }, (payload) => {
+      }, (payload: any) => {
         const newMessage = payload.new as Message
         if (newMessage.receiver_id === currentUserId || newMessage.sender_id === currentUserId) {
           setMessages(prev => {
@@ -289,8 +291,8 @@ export default function PatientChatPage() {
       // First, let's test if we can connect to the database
       console.log('Testing database connection...')
       const { data: testData, error: testError } = await supabase
-        .from('users')
-        .select('count')
+        .from('profile_directory')
+        .select('id')
         .limit(1)
 
       if (testError) {
@@ -317,8 +319,8 @@ export default function PatientChatPage() {
       // Let's check what columns actually exist in the users table
       console.log('Checking users table structure...')
       const { data: structureData, error: structureError } = await supabase
-        .from('users')
-        .select('*')
+        .from('profile_directory')
+        .select('id, name, role, specialty, online')
         .limit(1)
 
       if (structureError) {
@@ -337,7 +339,7 @@ export default function PatientChatPage() {
       // Now try to load the actual contacts with a very simple query first
       console.log('Attempting to load contacts with simple query...')
       let { data: usersData, error } = await supabase
-        .from('users')
+        .from('profile_directory')
         .select('id, name, role')
         .limit(10)
 
@@ -357,7 +359,7 @@ export default function PatientChatPage() {
       // Now try the complex query
       console.log('Attempting complex query with role filtering...')
       const { data: complexData, error: complexError } = await supabase
-        .from('users')
+        .from('profile_directory')
         .select('id, name, role, specialty, online')
         .in('role', ['doctor', 'lab'])
         .order('online', { ascending: false })
@@ -403,7 +405,7 @@ export default function PatientChatPage() {
       
       // Update online users set (only if online column exists)
       if (usersList.some((u: any) => 'online' in u)) {
-        const onlineUserIds = new Set(usersList.filter((u: any) => u.online).map((u: any) => u.id))
+        const onlineUserIds = new Set<string>(usersList.filter((u: any) => u.online).map((u: any) => u.id))
         setOnlineUsers(onlineUserIds)
       }
       

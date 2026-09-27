@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { UUID_REGEX } from '@/lib/constants'
-import { verifySession, unauthorizedResponse } from '@/lib/api-utils'
+import { verifySession, unauthorizedResponse, forbiddenResponse, hasRole } from '@/lib/api-utils'
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,6 +9,9 @@ export async function POST(request: NextRequest) {
     const { user } = await verifySession()
     if (!user) {
       return unauthorizedResponse()
+    }
+    if (!hasRole(user, 'lab')) {
+      return forbiddenResponse()
     }
     // Validate environment variables
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -41,12 +44,11 @@ export async function POST(request: NextRequest) {
       fileName, 
       priority, 
       notes, 
-      uploadedBy,
       patientInfo 
     } = body
 
     // Validate required fields
-    if (!patientId || !doctorId || !testType || !originalName || !fileName || !uploadedBy) {
+    if (!patientId || !doctorId || !testType || !originalName || !fileName) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -57,16 +59,16 @@ export async function POST(request: NextRequest) {
     let resolvedPatientId = patientId
     if (!UUID_REGEX.test(patientId)) {
       const { data: shortMatch, error: shortErr } = await supabase
-        .from('user_short_ids')
-        .select('user_id')
+        .from('profiles')
+        .select('id')
         .eq('short_id', patientId)
         .maybeSingle()
 
       if (shortErr) {
-        console.warn('⚠️ Short ID lookup error:', shortErr.message)
+        console.warn('[simple-upload] Short ID lookup error:', shortErr.message)
       }
-      if (shortMatch?.user_id) {
-        resolvedPatientId = shortMatch.user_id
+      if (shortMatch?.id) {
+        resolvedPatientId = shortMatch.id
       } else {
         return NextResponse.json(
           { error: 'Invalid patient identifier. Use a valid short code or UUID.' },
@@ -79,16 +81,16 @@ export async function POST(request: NextRequest) {
     let resolvedDoctorId = doctorId
     if (!UUID_REGEX.test(doctorId)) {
       const { data: shortDoc, error: docErr } = await supabase
-        .from('user_short_ids')
-        .select('user_id')
+        .from('profiles')
+        .select('id')
         .eq('short_id', doctorId)
         .maybeSingle()
 
       if (docErr) {
-        console.warn('⚠️ Doctor Short ID lookup error:', docErr.message)
+        console.warn('[simple-upload] Doctor Short ID lookup error:', docErr.message)
       }
-      if (shortDoc?.user_id) {
-        resolvedDoctorId = shortDoc.user_id
+      if (shortDoc?.id) {
+        resolvedDoctorId = shortDoc.id
       } else {
         return NextResponse.json(
           { error: 'Invalid doctor identifier. Use a valid short code or UUID.' },
@@ -97,8 +99,35 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log('🔐 Simple upload for user:', uploadedBy)
-    console.log('📁 File:', fileName, 'Patient:', resolvedPatientId, 'Doctor:', resolvedDoctorId, 'Type:', testType)
+
+
+    const { data: profiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, role')
+      .in('id', [resolvedPatientId, resolvedDoctorId])
+
+    if (profilesError) {
+      return NextResponse.json({ error: 'Failed to verify report participants' }, { status: 500 })
+    }
+    if (!profiles?.some((profile) => profile.id === resolvedPatientId && profile.role === 'patient') ||
+        !profiles.some((profile) => profile.id === resolvedDoctorId && profile.role === 'doctor')) {
+      return NextResponse.json({ error: 'Patient or doctor was not found' }, { status: 400 })
+    }
+
+    const { data: assignment, error: assignmentError } = await supabase
+      .from('doctor_patient_assignments')
+      .select('id')
+      .eq('doctor_id', resolvedDoctorId)
+      .eq('patient_id', resolvedPatientId)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (assignmentError) {
+      return NextResponse.json({ error: 'Failed to verify patient assignment' }, { status: 500 })
+    }
+    if (!assignment) {
+      return forbiddenResponse()
+    }
 
     // Create a simple record with minimal data
     const simpleRecord = {
@@ -109,7 +138,7 @@ export async function POST(request: NextRequest) {
       file_name: fileName,
       priority: priority || 'normal',
       notes: notes || '',
-      uploaded_by: uploadedBy,
+      uploaded_by: user.id,
       uploaded_at: new Date().toISOString(),
       status: 'uploaded'
     }
@@ -124,16 +153,27 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (dbError) {
-        console.warn('⚠️ Database insert failed, continuing with file only:', dbError.message)
+        console.error('[simple-upload] DB insert failed:', dbError.message)
+        return NextResponse.json({ error: 'Failed to create report' }, { status: 500 })
       } else {
         reportId = reportData.id
-        console.log('✅ Report created with ID:', reportId)
+        
+        // Audit log creation
+        await supabase.from('audit_logs').insert({
+          actor_id: user.id,
+          patient_id: resolvedPatientId,
+          action: 'create',
+          resource_type: 'reports',
+          resource_id: reportId,
+          details: { file_name: fileName, test_type: testType }
+        })
       }
     } catch (dbError) {
-      console.warn('⚠️ Database insert failed, continuing with file only:', dbError)
+      console.error('[simple-upload] DB insert failed:', dbError)
+      return NextResponse.json({ error: 'Failed to create report' }, { status: 500 })
     }
 
-    // Return success response (even if database insert failed)
+    // Return success only after a persisted report has been created.
     return NextResponse.json({
       success: true,
       reportId: reportId,
@@ -142,7 +182,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error: any) {
-    console.error('❌ Simple upload error:', error)
+    console.error('[simple-upload] Error:', error)
     return NextResponse.json(
       { error: 'Upload failed', details: error.message },
       { status: 500 }

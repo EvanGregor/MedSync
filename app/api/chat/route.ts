@@ -65,6 +65,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 })
     }
 
+    if (typeof prompt !== 'string' || prompt.length > 4000) {
+      return NextResponse.json(
+        { error: 'Prompt must be a string of 4000 characters or fewer' },
+        { status: 400 },
+      )
+    }
+
     // =========================
     // GEMINI PROVIDER
     // =========================

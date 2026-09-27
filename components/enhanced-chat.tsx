@@ -1,4 +1,5 @@
 "use client"
+import Image from 'next/image'
 
 import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -68,6 +69,7 @@ export default function EnhancedChat({
       loadMessages()
       setupTypingSubscription()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedContact])
 
   const loadMessages = async () => {
@@ -219,9 +221,11 @@ export default function EnhancedChat({
                 {message.file_size && formatFileSize(message.file_size)}
               </div>
               {isImage && message.file_url ? (
-                <img
+                <Image
                   src={message.file_url}
-                  alt={message.file_name}
+                  alt={message.file_name || 'Attached image'}
+                  width={600}
+                  height={400}
                   className="max-w-full h-auto rounded"
                 />
               ) : (

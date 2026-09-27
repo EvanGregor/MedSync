@@ -9,6 +9,7 @@ from pathlib import Path
 import io
 import os
 import pickle
+import secrets
 import sys
 import tempfile
 from typing import Any, Dict, Optional, Tuple
@@ -46,10 +47,14 @@ app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# The browser never calls this service directly; the Next.js backend proxies requests.
+# Keep the sole browser origin pinned to the production app domain.
+allow_origins = ["https://medsync.health"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
+    allow_origins=allow_origins,
+    allow_methods=["POST", "GET"],
     allow_headers=["*"],
 )
 
@@ -234,22 +239,30 @@ async def analyze(request: Request, scan_type: str = Form(...), file: UploadFile
     expected_secret = os.getenv("INTERNAL_API_KEY")
 
     if not expected_secret:
-        return {
-            "error": "Server misconfiguration",
-            "severity": "critical",
-            "findings": "INTERNAL_API_KEY is not configured on the ML service.",
-            "confidence": 0.0,
-            "recommendations": "Set the INTERNAL_API_KEY environment variable.",
-        }
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Server misconfiguration",
+                "severity": "critical",
+                "findings": "INTERNAL_API_KEY is not configured on the ML service.",
+                "confidence": 0.0,
+                "recommendations": "Set the INTERNAL_API_KEY environment variable.",
+            },
+        )
 
-    if internal_secret != expected_secret:
-        return {
-            "error": "Unauthorized",
-            "severity": "critical",
-            "findings": "Access denied: Invalid credentials.",
-            "confidence": 0.0,
-            "recommendations": "Please contact system administrator.",
-        }
+    if not internal_secret or not secrets.compare_digest(internal_secret, expected_secret):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=401,
+            content={
+                "error": "Unauthorized",
+                "severity": "critical",
+                "findings": "Access denied: Invalid credentials.",
+                "confidence": 0.0,
+                "recommendations": "Please contact system administrator.",
+            },
+        )
 
     try:
         image_bytes = await file.read()
@@ -387,12 +400,24 @@ async def analyze(request: Request, scan_type: str = Form(...), file: UploadFile
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "xray_model_loaded": xray_models_ready,
-        "mri_model_loaded": mri_model is not None,
+    """Report readiness of each model artifact, not merely process liveness."""
+    from fastapi.responses import JSONResponse
+
+    models = {
+        "xray_effnet": xray_effnet_model is not None,
+        "xray_yolo": xray_yolo_model is not None,
+        "mri": mri_model is not None,
     }
+    ready = all(models.values()) and xray_models_ready
+    result = {
+        "status": "ready" if ready else "not_ready",
+        "ready": ready,
+        "models": models,
+        # Keep the previous aggregate keys for existing health consumers.
+        "xray_model_loaded": xray_models_ready,
+        "mri_model_loaded": models["mri"],
+    }
+    return result if ready else JSONResponse(status_code=503, content=result)
 
 
 if __name__ == "__main__":

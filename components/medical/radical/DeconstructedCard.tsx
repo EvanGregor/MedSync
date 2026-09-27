@@ -59,7 +59,7 @@ export function DeconstructedCard({
 
                 {/* Quotation title */}
                 <h3 className="text-3xl md:text-5xl font-black uppercase mb-6 leading-none tracking-tighter">
-                    "{title}"
+                     &quot;{title}&quot;
                 </h3>
 
                 {/* Content */}

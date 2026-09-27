@@ -43,3 +43,14 @@ export function unauthorizedResponse() {
     { status: 401 }
   )
 }
+
+export function forbiddenResponse() {
+  return NextResponse.json(
+    { error: "Forbidden. You do not have permission to access this resource." },
+    { status: 403 }
+  )
+}
+
+export function hasRole(user: { app_metadata?: Record<string, unknown> }, role: string) {
+  return user.app_metadata?.role === role
+}

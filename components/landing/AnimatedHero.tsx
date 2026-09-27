@@ -14,7 +14,7 @@ export default function AnimatedHero() {
         className="mb-8"
       >
         <span className="text-xs font-mono tracking-widest text-black/40 uppercase">
-          "HEALTHCARE PLATFORM"
+           &quot;HEALTHCARE PLATFORM&quot;
         </span>
       </motion.div>
 

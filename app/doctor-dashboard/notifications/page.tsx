@@ -43,6 +43,7 @@ export default function DoctorNotificationsPage() {
     }
     
     checkUser()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router])
 
   const loadNotifications = async () => {

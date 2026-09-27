@@ -34,7 +34,7 @@ From automated **MRI Brain Tumor detection** to **X-ray fracture analysis**, Med
 
 ### 🛡️ Enterprise-Grade Security
 - **Role-Based Access Control (RBAC)**: Strict permission boundaries for different user types.
-- **HIPAA-Ready Architecture**: Row Level Security (RLS) and JWT authentication ensure data privacy.
+- **Secure Architecture**: Row Level Security (RLS) and JWT authentication ensure data privacy.
 - **Comprehensive Audit Trails**: Detailed logging of all clinical interactions and data access.
 
 ---

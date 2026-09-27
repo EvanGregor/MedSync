@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import { callGeminiAPI, DOCTOR_PROMPT_CONTEXT } from "@/lib/gemini"
-import { callFreeChatAPI, FREE_DOCTOR_CONTEXT } from "@/lib/free-chat-api"
+
 
 export default function DoctorAIAssistantPage() {
   const [user, setUser] = useState<any>(null)
@@ -57,15 +57,11 @@ export default function DoctorAIAssistantPage() {
       
       try {
         console.log('Attempting Gemini API call...')
-        // Try Gemini API first
-        let response = await callGeminiAPI(currentMessage, DOCTOR_PROMPT_CONTEXT)
+        const response = await callGeminiAPI(currentMessage, DOCTOR_PROMPT_CONTEXT)
         console.log('Gemini response success:', response.success)
         
-        // If Gemini fails, try free API
         if (!response.success) {
-          console.warn('Gemini failed, trying free API... Error:', response.error)
-          response = await callFreeChatAPI(currentMessage, FREE_DOCTOR_CONTEXT)
-          console.log('Free API response success:', response.success)
+          throw new Error(response.error || 'API failed')
         }
         
         const aiResponse = {
@@ -100,13 +96,10 @@ export default function DoctorAIAssistantPage() {
       try {
         const prompt = `Please analyze the following patient data and provide diagnostic insights, differential diagnoses, and recommended next steps:\n\n${currentData}`
         
-        // Try Gemini API first
-        let response = await callGeminiAPI(prompt, DOCTOR_PROMPT_CONTEXT)
+        const response = await callGeminiAPI(prompt, DOCTOR_PROMPT_CONTEXT)
         
-        // If Gemini fails, try free API
         if (!response.success) {
-          console.log('Gemini failed, trying free API...')
-          response = await callFreeChatAPI(prompt, FREE_DOCTOR_CONTEXT)
+          throw new Error(response.error || 'API failed')
         }
         
         const analysis = {
@@ -223,7 +216,7 @@ export default function DoctorAIAssistantPage() {
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               <div className="flex justify-start">
                 <div className="bg-black/5 border border-black/10 p-4 max-w-[80%] rounded-none">
-                  <p className="text-sm font-mono leading-relaxed"><strong>AI DIAGNOSTIC ASSISTANT:</strong> Hello! I'm powered by Gemini AI and can help with differential diagnoses, treatment recommendations, and clinical decision support. What would you like to discuss?</p>
+                   <p className="text-sm font-mono leading-relaxed"><strong>AI DIAGNOSTIC ASSISTANT:</strong> Hello! I&apos;m powered by Gemini AI and can help with differential diagnoses, treatment recommendations, and clinical decision support. What would you like to discuss?</p>
                   <p className="text-[10px] font-mono text-black/40 uppercase mt-2">Just now</p>
                 </div>
               </div>

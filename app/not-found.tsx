@@ -19,7 +19,7 @@ export default function NotFound() {
       <div className="max-w-2xl w-full relative z-10 text-center">
         <div className="mb-8">
           <span className="text-xs font-mono tracking-widest text-black/40 uppercase">
-            "SYSTEM ERROR"
+             &quot;SYSTEM ERROR&quot;
           </span>
         </div>
 

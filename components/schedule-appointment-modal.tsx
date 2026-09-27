@@ -73,78 +73,27 @@ export default function ScheduleAppointmentModal({
             const supabase = createClient()
             const trimmedId = id.trim()
             
-            // 1. Try patient_profiles_unified with UUID-safe branching.
+            // 1. Try fetching from profiles
             let profile: any = null
 
             if (UUID_REGEX.test(trimmedId)) {
-                // UUID input can match id/user_id safely.
-                const { data: byUuid } = await supabase
-                    .from('patient_profiles_unified')
+                const { data } = await supabase
+                    .from('profile_directory')
                     .select('*')
-                    .or(`id.eq.${trimmedId},user_id.eq.${trimmedId}`)
+                    .eq('id', trimmedId)
+                    .eq('role', 'patient')
                     .maybeSingle()
-
-                if (byUuid) {
-                    profile = byUuid
-                }
+                profile = data
             } else {
-                // Non-UUID input is treated as short_id (case-insensitive).
                 const normalizedShortId = trimmedId.toLowerCase()
-
-                const { data: byShortId } = await supabase
-                    .from('patient_profiles_unified')
+                const { data } = await supabase
+                    .from('profile_directory')
                     .select('*')
                     .eq('short_id', normalizedShortId)
+                    .eq('role', 'patient')
                     .maybeSingle()
-
-                if (byShortId) {
-                    profile = byShortId
-                }
+                profile = data
             }
-
-            // 2. Try users table as fallback if they don't have a patient profile yet
-            if (!profile) {
-                let userRow: any = null
-
-                if (UUID_REGEX.test(trimmedId)) {
-                    const { data } = await supabase
-                        .from('users')
-                        .select('*')
-                        .eq('role', 'patient')
-                        .or(`id.eq.${trimmedId},auth_id.eq.${trimmedId}`)
-                        .maybeSingle()
-                    userRow = data
-                } else {
-                    const normalizedShortId = trimmedId.toLowerCase()
-                    const { data: shortMap } = await supabase
-                        .from('user_short_ids')
-                        .select('user_id')
-                        .eq('short_id', normalizedShortId)
-                        .eq('role', 'patient')
-                        .maybeSingle()
-
-                    if (shortMap?.user_id) {
-                        const { data } = await supabase
-                            .from('users')
-                            .select('*')
-                            .eq('auth_id', shortMap.user_id)
-                            .eq('role', 'patient')
-                            .maybeSingle()
-                        userRow = data
-                    }
-                }
-
-                if (userRow) {
-                    profile = {
-                        id: userRow.id,
-                        user_id: userRow.auth_id,
-                        name: userRow.name,
-                        full_name: userRow.name,
-                        short_id: userRow.short_id
-                    }
-                }
-            }
-
             if (profile) {
                 setPatientProfile(profile)
                 setPatientName(profile.full_name || profile.name || "")
@@ -196,8 +145,8 @@ export default function ScheduleAppointmentModal({
         setError("")
 
         // Validation
-        if (!resolvedPatientId && !patientName.trim()) {
-            setError("Please select a patient or enter a patient name")
+        if (!resolvedPatientId) {
+            setError("Please enter a valid Patient Short ID or UUID and ensure the profile loads")
             return
         }
 
@@ -249,6 +198,17 @@ export default function ScheduleAppointmentModal({
                 console.error('Error creating appointment:', insertError)
                 setError(`Failed to create appointment: ${insertError.message}`)
                 return
+            }
+
+            // Ensure patient is assigned to doctor so lab can upload reports
+            const { error: assignError } = await supabase
+                .from('doctor_patient_assignments')
+                .upsert(
+                    { doctor_id: doctorId, patient_id: resolvedPatientId, is_active: true },
+                    { onConflict: 'doctor_id,patient_id,is_active' }
+                )
+            if (assignError) {
+                console.warn('Could not upsert doctor patient assignment:', assignError)
             }
 
             console.log('Appointment created successfully:', data)

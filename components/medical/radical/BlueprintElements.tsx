@@ -66,7 +66,7 @@ export function QuotationTitle({ children, size = 'md', className }: QuotationTi
             sizes[size],
             className
         )}>
-            "{children}"
+             &quot;{children}&quot;
         </h1>
     )
 }

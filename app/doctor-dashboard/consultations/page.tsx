@@ -100,9 +100,9 @@ export default function ConsultationsPage() {
 
         // Get the doctor ID from the doctors table
         const { data: doctorData } = await supabase
-          .from('doctors')
+          .from('profile_directory')
           .select('id')
-          .eq('user_id', user.id)
+          .eq('id', user.id)
           .maybeSingle()
 
         if (doctorData) {
@@ -122,6 +122,7 @@ export default function ConsultationsPage() {
     }
 
     checkUser()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Remove router dependency to prevent re-runs on tab switches
 
   // Add focus listener to refresh consultations when page becomes visible
@@ -145,20 +146,16 @@ export default function ConsultationsPage() {
       setIsLoading(true)
       setLoadError(null)
 
-      // First, try to get the doctor's record from the doctors table
-      let actualDoctorId = doctorId
+      // Doctor accounts are represented by their single safe directory row.
       const { data: doctorData, error: doctorError } = await supabase
-        .from('doctors')
+        .from('profile_directory')
         .select('id, name')
-        .eq('user_id', doctorId)
-        .order('created_at', { ascending: false })
-        .limit(1)
+        .eq('id', doctorId)
         .maybeSingle()
 
       console.log('🔍 Doctor lookup result:', { doctorData, doctorError })
 
       if (doctorData) {
-        actualDoctorId = doctorData.id
         console.log('✅ Found doctor record:', doctorData)
       } else {
         console.log('⚠️ No doctor record found for this authenticated user:', doctorId)
@@ -166,6 +163,8 @@ export default function ConsultationsPage() {
         setLoadError('Doctor profile not found for this account. Please contact support to link your doctor profile.')
         return
       }
+
+      const actualDoctorId = doctorData.id
 
       // Load today's and upcoming consultations (including confirmed appointments)
       const today = format(new Date(), 'yyyy-MM-dd')
@@ -207,7 +206,7 @@ export default function ConsultationsPage() {
 
       if (appointments && appointments.length > 0) {
         console.log('✅ Found', appointments.length, 'appointments')
-        const consultationsData: Consultation[] = appointments.map(apt => ({
+        const consultationsData: Consultation[] = appointments.map((apt: any) => ({
           id: apt.id,
           patient_name: apt.patient_name || 'Unknown Patient',
           patient_id: apt.patient_id,
@@ -371,7 +370,7 @@ export default function ConsultationsPage() {
         <div className="bg-white p-6">
           <div className="flex items-center space-x-3 mb-2">
              <Calendar className="h-5 w-5 text-black" />
-             <span className="text-[10px] font-mono uppercase tracking-widest text-black/60">Today's Total</span>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-black/60">Today&apos;s Total</span>
           </div>
           <div className="text-3xl font-bold">
              {consultations.filter(c => c.appointment_date === format(new Date(), 'yyyy-MM-dd')).length}
@@ -415,7 +414,7 @@ export default function ConsultationsPage() {
           <div>
             <h2 className="text-xl font-bold uppercase flex items-center gap-2">
               <span className="h-2 w-2 bg-black rounded-full"></span>
-              Today's Consultations
+               Today&apos;s Consultations
             </h2>
           </div>
           <div className="flex space-x-2">

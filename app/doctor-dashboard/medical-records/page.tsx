@@ -99,27 +99,8 @@ export default function MedicalRecordsPage() {
         
         patientsData = assignedPatients || []
       } catch (rpcError) {
-        console.warn('RPC function not available, trying direct patient query...')
-        
-        // Fallback: try to load all patients (less secure but functional)
-        const { data: allPatients, error: fallbackError } = await supabase
-          .from('patients')
-          .select('*')
-          .order('name', { ascending: true })
-        
-        if (fallbackError) {
-          console.error('Fallback patient query failed:', fallbackError)
-          throw fallbackError
-        }
-        
-        // Transform to match expected format
-        patientsData = (allPatients || []).map(patient => ({
-          patient_id: patient.user_id || patient.id,
-          patient_short_id: patient.short_id,
-          patient_name: patient.name,
-          patient_email: patient.email,
-          total_reports: 0
-        }))
+        console.error('Could not load assigned patients:', rpcError)
+        throw rpcError
       }
 
       if (patientsData && patientsData.length > 0) {
@@ -151,8 +132,8 @@ export default function MedicalRecordsPage() {
           
           // Check if table doesn't exist
           if (recordsError.code === '42P01' || recordsError.message?.includes('relation') || recordsError.message?.includes('does not exist')) {
-            console.log('Medical records table not found, using demo records')
-            loadDemoMedicalRecords(patientsList)
+            console.error('Medical records table is unavailable')
+            setMedicalRecords([])
             return
           }
           
@@ -164,7 +145,7 @@ export default function MedicalRecordsPage() {
           })
           setMedicalRecords([])
         } else if (recordsData) {
-          const recordsList: MedicalRecord[] = recordsData.map(r => ({
+          const recordsList: MedicalRecord[] = recordsData.map((r: any) => ({
             id: r.id,
             patient_id: r.patient_id,
             patient_name: r.patient_name || 'Unknown Patient',
@@ -179,117 +160,17 @@ export default function MedicalRecordsPage() {
           }))
           setMedicalRecords(recordsList)
         } else {
-          console.log('No medical records found, using demo records')
-          loadDemoMedicalRecords(patientsList)
+          setMedicalRecords([])
         }
       } else {
-        // Only use demo data if there are truly no patients
-        console.log('No patients found, using demo data')
-        loadDemoData()
+        setPatients([])
+        setMedicalRecords([])
       }
     } catch (error) {
       console.error('Error loading medical records:', error)
-      console.log('Using demo data due to error')
-      loadDemoData()
+      setPatients([])
+      setMedicalRecords([])
     }
-  }
-
-  const loadDemoData = () => {
-    const demoPatients: Patient[] = [
-      {
-        id: 'patient-001',
-        name: 'John Doe',
-        age: 45,
-        gender: 'Male',
-        email: 'john.doe@email.com',
-        phone: '+1 (555) 123-4567',
-        last_visit: format(new Date(), 'yyyy-MM-dd'),
-        total_visits: 12,
-        primary_condition: 'Hypertension',
-        medications: ['Lisinopril', 'Metformin'],
-        allergies: ['Penicillin', 'Sulfa drugs']
-      },
-      {
-        id: 'patient-002',
-        name: 'Sarah Smith',
-        age: 32,
-        gender: 'Female',
-        email: 'sarah.smith@email.com',
-        phone: '+1 (555) 234-5678',
-        last_visit: format(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'),
-        total_visits: 8,
-        primary_condition: 'Diabetes Type 2',
-        medications: ['Metformin', 'Glipizide'],
-        allergies: ['Latex']
-      },
-      {
-        id: 'patient-003',
-        name: 'Mike Johnson',
-        age: 58,
-        gender: 'Male',
-        email: 'mike.johnson@email.com',
-        phone: '+1 (555) 345-6789',
-        last_visit: format(new Date(Date.now() - 14 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'),
-        total_visits: 15,
-        primary_condition: 'Heart Disease',
-        medications: ['Atorvastatin', 'Amlodipine', 'Aspirin'],
-        allergies: ['Shellfish']
-      }
-    ]
-    setPatients(demoPatients)
-    loadDemoMedicalRecords(demoPatients)
-  }
-
-  const loadDemoMedicalRecords = (patientsList: Patient[]) => {
-    const demoRecords: MedicalRecord[] = [
-      {
-        id: 'record-001',
-        patient_id: 'patient-001',
-        patient_name: 'John Doe',
-        record_type: 'consultation',
-        date: format(new Date(), 'yyyy-MM-dd'),
-        doctor_name: 'Dr. Smith',
-        diagnosis: 'Hypertension - Well controlled',
-        treatment: 'Continue current medication regimen',
-        notes: 'Patient reports good compliance with medications. Blood pressure readings are stable.',
-        status: 'active'
-      },
-      {
-        id: 'record-002',
-        patient_id: 'patient-001',
-        patient_name: 'John Doe',
-        record_type: 'lab_result',
-        date: format(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'),
-        doctor_name: 'Dr. Smith',
-        diagnosis: 'Blood work normal',
-        notes: 'All values within normal range. Cholesterol levels improved.',
-        status: 'active'
-      },
-      {
-        id: 'record-003',
-        patient_id: 'patient-002',
-        patient_name: 'Sarah Smith',
-        record_type: 'consultation',
-        date: format(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'),
-        doctor_name: 'Dr. Smith',
-        diagnosis: 'Diabetes Type 2 - Stable',
-        treatment: 'Adjust Metformin dosage',
-        notes: 'Blood sugar levels slightly elevated. Increase Metformin to 1000mg twice daily.',
-        status: 'active'
-      },
-      {
-        id: 'record-004',
-        patient_id: 'patient-003',
-        patient_name: 'Mike Johnson',
-        record_type: 'imaging',
-        date: format(new Date(Date.now() - 14 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'),
-        doctor_name: 'Dr. Smith',
-        diagnosis: 'Chest X-ray normal',
-        notes: 'No significant findings. Heart size normal.',
-        status: 'active'
-      }
-    ]
-    setMedicalRecords(demoRecords)
   }
 
   const viewPatientDetails = (patient: Patient) => {

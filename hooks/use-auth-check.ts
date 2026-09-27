@@ -30,14 +30,16 @@ export function useAuthCheck(requiredRole?: UserRole) {
 
       try {
         const supabase = createClient()
-        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        const { data: { session }, error: authError } = await supabase.auth.getSession()
+        const user = session?.user || null
 
         if (authError || !user) {
+          console.error("useAuthCheck: getUser failed!", authError)
           router.push("/login")
           return
         }
 
-        const userRole = user.user_metadata?.role
+        const userRole = user.app_metadata?.role || user.user_metadata?.role
 
         if (requiredRole && userRole !== requiredRole) {
           console.error(`Unauthorized access: required ${requiredRole}, got ${userRole}`)
@@ -47,17 +49,20 @@ export function useAuthCheck(requiredRole?: UserRole) {
 
         setUser(user)
 
-        // Resolve Short ID
+        // Resolve the ID from the current schema. Phase 3 consolidated IDs
+        // onto profiles and removed user_short_ids.
         try {
-          let resolvedShortId: string | null = null
-          const { data: userRow } = await supabase.from('users').select('short_id').eq('auth_id', user.id).maybeSingle()
-          resolvedShortId = userRow?.short_id || null
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('short_id')
+            .eq('id', user.id)
+            .maybeSingle()
 
-          if (!resolvedShortId) {
-            const { data: shortRow } = await supabase.from('user_short_ids').select('short_id').eq('user_id', user.id).maybeSingle()
-            resolvedShortId = shortRow?.short_id || null
+          if (profileError) {
+            console.warn("Could not resolve short ID:", profileError)
+          } else {
+            setShortId(profile?.short_id || null)
           }
-          setShortId(resolvedShortId)
         } catch (idError) {
           console.warn('Failed to resolve short ID:', idError)
         }

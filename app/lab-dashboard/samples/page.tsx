@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Activity, FlaskConical, ArrowLeft, Plus, Search, Filter, Clock, CheckCircle, AlertTriangle, X } from "lucide-react"
 import { createClient } from "@/lib/supabase"
+import { UUID_REGEX } from "@/lib/constants"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
@@ -56,105 +57,72 @@ export default function LabSamplesPage() {
       }
 
       setUser(user)
-      loadSamples()
+      await loadSamples(user.id)
       setLoading(false)
     }
 
     checkUser()
   }, [router])
 
-  const loadSamples = async () => {
-    // Mock data for demonstration
-    const mockSamples: Sample[] = [
-      {
-        id: "1",
-        patient_id: "P001",
-        patient_name: "John Smith",
-        sample_type: "Blood",
-        collection_date: "2024-01-15T09:00:00Z",
-        status: "pending",
-        priority: "normal",
-        notes: "Routine blood work",
-        assigned_tech: "Lab Tech 1"
-      },
-      {
-        id: "2",
-        patient_id: "P002",
-        patient_name: "Sarah Johnson",
-        sample_type: "Urine",
-        collection_date: "2024-01-15T10:30:00Z",
-        status: "processing",
-        priority: "high",
-        notes: "Urgent analysis required",
-        assigned_tech: "Lab Tech 2"
-      },
-      {
-        id: "3",
-        patient_id: "P003",
-        patient_name: "Michael Brown",
-        sample_type: "Tissue",
-        collection_date: "2024-01-15T08:15:00Z",
-        status: "completed",
-        priority: "normal",
-        notes: "Biopsy sample",
-        assigned_tech: "Lab Tech 1"
-      },
-      {
-        id: "4",
-        patient_id: "P004",
-        patient_name: "Emily Davis",
-        sample_type: "Blood",
-        collection_date: "2024-01-15T11:45:00Z",
-        status: "urgent",
-        priority: "critical",
-        notes: "Emergency cardiac markers",
-        assigned_tech: "Lab Tech 3"
-      },
-      {
-        id: "5",
-        patient_id: "P005",
-        patient_name: "David Wilson",
-        sample_type: "CSF",
-        collection_date: "2024-01-15T07:30:00Z",
-        status: "processing",
-        priority: "high",
-        notes: "Meningitis workup",
-        assigned_tech: "Lab Tech 2"
-      }
-    ]
+  const loadSamples = async (labId: string) => {
+    const { data, error } = await createClient()
+      .from('lab_samples')
+      .select('*')
+      .eq('lab_id', labId)
+      .order('created_at', { ascending: false })
 
-    setSamples(mockSamples)
+    if (error) {
+      console.error('Could not load lab samples:', error)
+      setSamples([])
+      return
+    }
+    setSamples((data || []) as Sample[])
   }
 
-  const handleAddSample = () => {
-    if (!addForm.patient_id || !addForm.patient_name || !addForm.sample_type || !addForm.collection_date) {
-      alert("Please fill in all required fields")
+  const handleAddSample = async () => {
+    if (!user || !addForm.patient_id.trim() || !addForm.sample_type || !addForm.collection_date) {
+      alert('Enter a patient, specimen type, and collection time.')
       return
     }
 
-    const newSample: Sample = {
-      id: (samples.length + 1).toString(),
-      patient_id: addForm.patient_id,
-      patient_name: addForm.patient_name,
-      sample_type: addForm.sample_type,
-      collection_date: addForm.collection_date,
-      status: "pending",
-      priority: addForm.priority as 'low' | 'normal' | 'high' | 'critical',
-      notes: addForm.notes || undefined,
-      assigned_tech: addForm.assigned_tech || undefined
+    const supabase = createClient()
+    let patientQuery = supabase
+      .from('profile_directory')
+      .select('id, name')
+      .eq('role', 'patient')
+    patientQuery = UUID_REGEX.test(addForm.patient_id.trim())
+      ? patientQuery.eq('id', addForm.patient_id.trim())
+      : patientQuery.ilike('short_id', addForm.patient_id.trim())
+    const { data: patient, error: patientError } = await patientQuery.maybeSingle()
+    if (patientError || !patient) {
+      alert('Patient not found. Enter a valid patient ID or Short ID.')
+      return
     }
 
-    setSamples([...samples, newSample])
+    const { data: sample, error } = await supabase
+      .from('lab_samples')
+      .insert({
+        lab_id: user.id,
+        patient_id: patient.id,
+        patient_name: addForm.patient_name.trim() || patient.name || 'Patient',
+        sample_type: addForm.sample_type,
+        collection_date: new Date(addForm.collection_date).toISOString(),
+        priority: addForm.priority,
+        notes: addForm.notes,
+        assigned_tech: addForm.assigned_tech.trim() || user.user_metadata?.name || '',
+      })
+      .select('*')
+      .single()
+
+    if (error || !sample) {
+      console.error('Could not register lab sample:', error)
+      alert('Specimen registration failed. Please try again.')
+      return
+    }
+
+    setSamples((current) => [sample as Sample, ...current])
     setShowAddModal(false)
-    setAddForm({
-      patient_id: "",
-      patient_name: "",
-      sample_type: "",
-      collection_date: "",
-      priority: "normal",
-      notes: "",
-      assigned_tech: ""
-    })
+    setAddForm({ patient_id: '', patient_name: '', sample_type: '', collection_date: '', priority: 'normal', notes: '', assigned_tech: '' })
   }
 
   const handleViewSample = (sample: Sample) => {
@@ -162,10 +130,23 @@ export default function LabSamplesPage() {
     setShowViewModal(true)
   }
 
-  const handleStatusUpdate = (sampleId: string, newStatus: 'pending' | 'processing' | 'completed' | 'urgent') => {
-    setSamples(samples.map(sample => 
-      sample.id === sampleId ? { ...sample, status: newStatus } : sample
-    ))
+  const handleStatusUpdate = async (sampleId: string, newStatus: 'pending' | 'processing' | 'completed' | 'urgent') => {
+    if (!user) return
+    const { data: sample, error } = await createClient()
+      .from('lab_samples')
+      .update({ status: newStatus, updated_at: new Date().toISOString() })
+      .eq('id', sampleId)
+      .eq('lab_id', user.id)
+      .select('*')
+      .single()
+
+    if (error || !sample) {
+      console.error('Could not update lab sample:', error)
+      alert('Could not update specimen status. Please try again.')
+      return
+    }
+    setSamples((current) => current.map((row) => row.id === sampleId ? sample as Sample : row))
+    setSelectedSample(sample as Sample)
   }
 
   const getStatusColor = (status: string) => {
@@ -242,23 +223,6 @@ export default function LabSamplesPage() {
           </span>
         </div>
       </header>
-
-      {/* Quick Stats Grid - Superflat */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-px bg-black/10 border border-black/10 mb-16">
-        {[
-          { label: 'Pending Samples', count: samples.filter(s => s.status === 'pending').length, accent: 'bg-amber-600', sub: 'Awaiting Entry' },
-          { label: 'Processing Cycle', count: samples.filter(s => s.status === 'processing').length, accent: 'bg-indigo-600', sub: 'Active Analysis' },
-          { label: 'Urgent Packets', count: samples.filter(s => s.status === 'urgent' || s.priority === 'critical').length, accent: 'bg-red-600', sub: 'Priority One' },
-          { label: 'Completed Cycle', count: samples.filter(s => s.status === 'completed').length, accent: 'bg-emerald-600', sub: 'Archive Ready' }
-        ].map((stat, i) => (
-          <div key={i} className="bg-white p-8 relative overflow-hidden group">
-            <div className={`absolute left-0 top-0 h-full w-0.5 ${stat.accent}`}></div>
-            <div className="text-[10px] font-mono uppercase tracking-widest text-black/40 mb-4">{stat.label}</div>
-            <div className="text-4xl font-black tracking-tighter mb-1">{stat.count}</div>
-            <div className="text-[10px] font-mono uppercase tracking-widest text-black/20 italic">{stat.sub}</div>
-          </div>
-        ))}
-      </div>
 
       {/* Filters and Search - Brutalist */}
       <div className="border border-black/10 bg-white p-10 relative mb-12">

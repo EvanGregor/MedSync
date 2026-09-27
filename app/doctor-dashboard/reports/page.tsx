@@ -53,9 +53,9 @@ export default function DoctorPatientManagementPage() {
       let doctorShortId: string | null = null
       try {
         const { data: shortIdData } = await supabase
-          .from('user_short_ids')
+          .from('profile_directory')
           .select('short_id')
-          .eq('user_id', user.id)
+          .eq('id', user.id)
           .maybeSingle()
         doctorShortId = shortIdData?.short_id || null
       } catch (shortIdError) {
@@ -71,7 +71,7 @@ export default function DoctorPatientManagementPage() {
       // Filter reports on client-side to match doctor
       let filteredReports = reportsData || []
       if (reportsData) {
-        filteredReports = reportsData.filter(report => 
+        filteredReports = reportsData.filter((report: any) => 
           report.doctor_id === user.id || 
           (doctorShortId && report.doctor_id === doctorShortId)
         )
@@ -96,47 +96,60 @@ export default function DoctorPatientManagementPage() {
       console.log('Reports from database:', reportsData?.length || 0)
       console.log('Filtered reports for doctor:', filteredReports.length)
       
-      // Fetch ML suggestions separately to avoid join issues
-      const { data: mlSuggestions } = await supabase
-        .from('ml_suggestions')
-        .select('*')
-      
-      // Transform data to include ML suggestions
-      const transformedReports = filteredReports.map((report: any) => {
-        const mlSuggestion = mlSuggestions?.find(ml => ml.report_id === report.id) || null
-        console.log(`Report ${report.id}: ML suggestion exists:`, !!mlSuggestion)
-        if (mlSuggestion) {
-          console.log(`  - Findings: ${mlSuggestion.findings?.substring(0, 50)}...`)
-          console.log(`  - Confidence: ${mlSuggestion.confidence}`)
-          console.log(`  - Status: ${mlSuggestion.status}`)
-        }
-        return {
-          ...report,
-          ml_suggestion: mlSuggestion
-        }
-      })
-      
-      console.log('Setting reports from database:', transformedReports.length)
-      console.log('Reports with ML suggestions:', transformedReports.filter(r => r.ml_suggestion).length)
-      setReports(transformedReports)
-      
-      // Load assigned patients - skip this for now to avoid permission issues
+      // Load assigned patients first so we can map their names
+      let patientMap = new Map()
       try {
         const { data: patientsData } = await supabase.rpc('get_doctor_patients_bulletproof', { doctor_uuid: user.id })
         if (patientsData) {
           console.log('Assigned patients:', patientsData.length)
           setAssignedPatients(patientsData)
+          // Add assigned patients to map
+          patientsData.forEach((p: any) => patientMap.set(p.patient_id, p.patient_name))
         }
       } catch (patientsError) {
-        const errorInfo = {
-          message: patientsError instanceof Error ? patientsError.message : 'Unknown error',
-          stack: patientsError instanceof Error ? patientsError.stack : null,
-          timestamp: new Date().toISOString(),
-          context: 'loading_assigned_patients'
-        }
-        console.warn('Could not load assigned patients:', errorInfo)
+        console.warn('Could not load assigned patients:', patientsError)
         setAssignedPatients([])
       }
+
+      // Also fetch names from profile_directory to catch patients who uploaded reports but aren't assigned
+      const patientIds = Array.from(new Set(filteredReports.map((r: any) => r.patient_id).filter(Boolean)))
+      if (patientIds.length > 0) {
+        try {
+          const { data: directoryProfiles } = await supabase
+            .from('profile_directory')
+            .select('id, name')
+            .in('id', patientIds as string[])
+            
+          if (directoryProfiles) {
+            directoryProfiles.forEach((p: any) => {
+              if (p.name) patientMap.set(p.id, p.name)
+            })
+          }
+        } catch (dirErr) {
+          console.warn('Could not load profile directory:', dirErr)
+        }
+      }
+
+      // Fetch ML suggestions separately to avoid join issues
+      const { data: mlSuggestions } = await supabase
+        .from('ml_suggestions')
+        .select('*')
+      
+      // Transform data to include ML suggestions and patient names
+      const transformedReports = filteredReports.map((report: any) => {
+        const mlSuggestion = mlSuggestions?.find((ml: any) => ml.report_id === report.id) || null
+        if (mlSuggestion) {
+          console.log(`Report ${report.id}: ML suggestion exists`)
+        }
+        return {
+          ...report,
+          user_name: report.user_name || report.patient_name || patientMap.get(report.patient_id) || 'Unknown Patient',
+          ml_suggestion: mlSuggestion
+        }
+      })
+      
+      console.log('Setting reports from database:', transformedReports.length)
+      setReports(transformedReports)
       
       setLoading(false)
     }

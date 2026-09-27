@@ -156,17 +156,17 @@ export default function DoctorCommunicationPage() {
 
       // Get or create user record
       const { data: userData, error: userError } = await supabase
-        .from('users')
+        .from('profile_directory')
         .select('id')
-        .eq('auth_id', user.id)
+        .eq('id', user.id)
         .single()
 
       if (userError) {
         console.log('Creating new user record...')
         const { data: newUser, error: createError } = await supabase
-          .from('users')
+          .from('profiles')
           .insert({
-            auth_id: user.id,
+            id: user.id,
             name: user.user_metadata?.name || 'Doctor',
             email: user.email || '',
             role: 'doctor'
@@ -180,7 +180,7 @@ export default function DoctorCommunicationPage() {
           setCurrentUserId(newUser.id)
           // Set user as online
           await supabase
-            .from('users')
+            .from('profiles')
             .update({ online: true })
             .eq('id', newUser.id)
         }
@@ -188,7 +188,7 @@ export default function DoctorCommunicationPage() {
         setCurrentUserId(userData.id)
         // Set user as online
         await supabase
-          .from('users')
+          .from('profiles')
           .update({ online: true })
           .eq('id', userData.id)
       }
@@ -197,6 +197,7 @@ export default function DoctorCommunicationPage() {
     }
 
     checkUser()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router])
 
   useEffect(() => {
@@ -205,6 +206,7 @@ export default function DoctorCommunicationPage() {
       loadMLSuggestions()
       setupRealtimeSubscriptions()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUserId])
 
   useEffect(() => {
@@ -212,6 +214,7 @@ export default function DoctorCommunicationPage() {
       loadMessages()
       markMessagesAsRead()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedContact, currentUserId])
 
   // Handle URL parameters for pre-selecting patient
@@ -253,9 +256,9 @@ export default function DoctorCommunicationPage() {
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
-        table: 'users',
+        table: 'profiles',
         filter: `role.in.(patient,lab)`
-      }, (payload) => {
+      }, (payload: any) => {
         if (payload.eventType === 'UPDATE') {
           const updatedUser = payload.new as any
           setOnlineUsers(prev => {
@@ -278,7 +281,7 @@ export default function DoctorCommunicationPage() {
         event: 'INSERT',
         schema: 'public',
         table: 'messages'
-      }, (payload) => {
+      }, (payload: any) => {
         const newMessage = payload.new as Message
         if (newMessage.receiver_id === currentUserId || newMessage.sender_id === currentUserId) {
           setMessages(prev => {
@@ -299,7 +302,7 @@ export default function DoctorCommunicationPage() {
         event: 'INSERT',
         schema: 'public',
         table: 'ml_suggestions'
-      }, (payload) => {
+      }, (payload: any) => {
         const newSuggestion = payload.new as MLSuggestion
         setMlSuggestions(prev => [newSuggestion, ...prev])
       })
@@ -307,7 +310,7 @@ export default function DoctorCommunicationPage() {
         event: 'UPDATE',
         schema: 'public',
         table: 'ml_suggestions'
-      }, (payload) => {
+      }, (payload: any) => {
         const updatedSuggestion = payload.new as MLSuggestion
         setMlSuggestions(prev =>
           prev.map(s => s.id === updatedSuggestion.id ? updatedSuggestion : s)
@@ -325,7 +328,7 @@ export default function DoctorCommunicationPage() {
   const loadContacts = async () => {
     try {
       const { data: usersData, error } = await supabase
-        .from('users')
+        .from('profile_directory')
         .select('id, name, role, specialty, online')
         .in('role', ['patient', 'lab'])
         .order('online', { ascending: false })
@@ -356,7 +359,7 @@ export default function DoctorCommunicationPage() {
       setLabTechs(usersList.filter((u: any) => u.role === 'lab'))
 
       // Update online users set
-      const onlineUserIds = new Set(usersList.filter((u: any) => u.online).map((u: any) => u.id))
+      const onlineUserIds = new Set<string>(usersList.filter((u: any) => u.online).map((u: any) => u.id))
       setOnlineUsers(onlineUserIds)
 
       if (usersList.filter((u: any) => u.role === 'patient').length > 0) {
@@ -550,7 +553,7 @@ export default function DoctorCommunicationPage() {
     }
   }
 
-  const useSuggestionInChat = (suggestion: MLSuggestion) => {
+  const insertSuggestionIntoChat = (suggestion: MLSuggestion) => {
     const suggestionText = `AI Analysis for Patient ${suggestion.patient_id} (${suggestion.test_type}):
 Findings: ${suggestion.findings}
 Confidence: ${(suggestion.confidence * 100).toFixed(1)}%
@@ -929,7 +932,7 @@ Severity: ${suggestion.severity}`
                             className="border-black rounded-none font-mono uppercase text-[10px] h-6 px-3"
                             onClick={(e) => {
                               e.stopPropagation()
-                              useSuggestionInChat(suggestion)
+                              insertSuggestionIntoChat(suggestion)
                             }}
                           >
                             Use
@@ -1004,7 +1007,7 @@ Severity: ${suggestion.severity}`
 
                 <div className="flex space-x-4 pt-6 border-t border-black/10">
                   <Button
-                    onClick={() => useSuggestionInChat(selectedSuggestion)}
+                    onClick={() => insertSuggestionIntoChat(selectedSuggestion)}
                     className="flex-1 bg-black hover:bg-black/80 text-white rounded-none font-mono uppercase text-xs h-12"
                   >
                     Use in Chat

@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import { callGeminiAPI, PATIENT_PROMPT_CONTEXT } from "@/lib/gemini"
-import { callFreeChatAPI, FREE_PATIENT_CONTEXT } from "@/lib/free-chat-api"
+
 
 export default function PatientAIAssistantPage() {
   const [user, setUser] = useState<any>(null)
@@ -54,13 +54,10 @@ export default function PatientAIAssistantPage() {
       setIsLoading(true)
       
       try {
-        // Try Gemini API first
-        let response = await callGeminiAPI(currentMessage, PATIENT_PROMPT_CONTEXT)
+        const response = await callGeminiAPI(currentMessage, PATIENT_PROMPT_CONTEXT)
         
-        // If Gemini fails, try free API
         if (!response.success) {
-          console.log('Gemini failed, trying free API...')
-          response = await callFreeChatAPI(currentMessage, FREE_PATIENT_CONTEXT)
+          throw new Error(response.error || 'API failed')
         }
         
         const aiResponse = {

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Activity, FileText, MessageSquare, Calendar, Brain, Heart, Video, ArrowRight } from "lucide-react"
+import { Activity, FileText, MessageSquare, Calendar, Brain, Video, ArrowRight } from "lucide-react"
 import { createClient } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -26,7 +26,6 @@ interface PatientStats {
   recentReports: number
   upcomingAppointments: number
   unreadMessages: number
-  healthScore: number
 }
 
 export default function PatientDashboard() {
@@ -36,8 +35,7 @@ export default function PatientDashboard() {
   const [stats, setStats] = useState<PatientStats>({
     recentReports: 0,
     upcomingAppointments: 0,
-    unreadMessages: 0,
-    healthScore: 85
+    unreadMessages: 0
   })
   const router = useRouter()
 
@@ -52,15 +50,7 @@ export default function PatientDashboard() {
     setDataLoading(true)
 
     try {
-      // 1. Resolve internal patient ID
       let actualPatientId = patientId
-      const { data: patientData } = await supabase
-        .from('patients')
-        .select('id')
-        .eq('user_id', patientId)
-        .maybeSingle()
-
-      if (patientData) actualPatientId = patientData.id
 
       // 2. Fetch Appointments
       const today = format(new Date(), 'yyyy-MM-dd')
@@ -91,7 +81,7 @@ export default function PatientDashboard() {
       const activities: PatientActivity[] = []
 
       if (appointments) {
-        appointments.forEach(apt => {
+        appointments.forEach((apt: any) => {
           activities.push({
             id: apt.id,
             type: 'appointment',
@@ -105,7 +95,7 @@ export default function PatientDashboard() {
       }
 
       if (reports) {
-        reports.forEach(report => {
+        reports.forEach((report: any) => {
           activities.push({
             id: report.id,
             type: 'report',
@@ -125,8 +115,7 @@ export default function PatientDashboard() {
       setStats({
         recentReports: reports?.length || 0,
         upcomingAppointments: appointments?.length || 0,
-        unreadMessages: messages?.filter(m => m.read === false).length || 0,
-        healthScore: 85 // Mock health score for now
+        unreadMessages: messages?.filter((m: any) => m.read === false).length || 0,
       })
 
     } catch (error) {
@@ -200,14 +189,14 @@ export default function PatientDashboard() {
           </div>
 
           {/* Stats Grid - "Deconstructed" */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-px bg-black/10 border border-black/10 mb-16">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-black/10 border border-black/10 mb-16">
             <div className="bg-white p-6 hover:bg-black/[0.02] transition-colors group cursor-pointer relative" onClick={() => router.push('/patient-dashboard/reports')}>
               <div className="flex justify-between items-start mb-4">
                 <FileText className="h-5 w-5 text-black/40 group-hover:text-black transition-colors" />
                 <span className="text-[10px] font-mono uppercase tracking-widest text-black/40">01</span>
               </div>
               <div className="text-3xl font-bold mb-1">{stats.recentReports}</div>
-              <div className="text-xs font-mono uppercase tracking-wider text-black/60">Medical Reports</div>
+              <div className="text-xs font-mono uppercase tracking-wider text-black/60">Recent Reports</div>
               <div className="absolute bottom-0 left-0 w-full h-0.5 bg-red-600"></div>
             </div>
 
@@ -231,15 +220,6 @@ export default function PatientDashboard() {
               <div className="absolute bottom-0 left-0 w-full h-0.5 bg-slate-900"></div>
             </div>
 
-            <div className="bg-white p-6 hover:bg-black/[0.02] transition-colors group cursor-pointer relative">
-              <div className="flex justify-between items-start mb-4">
-                <Heart className="h-5 w-5 text-black/40 group-hover:text-black transition-colors" />
-                <span className="text-[10px] font-mono uppercase tracking-widest text-black/40">04</span>
-              </div>
-              <div className="text-3xl font-bold mb-1">{stats.healthScore}%</div>
-              <div className="text-xs font-mono uppercase tracking-wider text-black/60">Health Score</div>
-              <div className="absolute bottom-0 left-0 w-full h-0.5 bg-emerald-600"></div>
-            </div>
           </div>
 
           {/* Main Content Areas */}
